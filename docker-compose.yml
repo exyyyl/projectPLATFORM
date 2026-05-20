@@ -66,6 +66,8 @@ services:
         condition: service_healthy
     environment:
       NODE_ENV: ${NODE_ENV:-development}
+      CHOKIDAR_USEPOLLING: "true"
+      WATCHPACK_POLLING: "true"
       PORT: 3000
       DATABASE_URL: postgresql://${POSTGRES_USER:-platform}:${POSTGRES_PASSWORD:-platform}@postgres:5432/${POSTGRES_DB:-platform}?schema=public
       MINIO_ENDPOINT: minio
@@ -89,6 +91,8 @@ services:
     restart: unless-stopped
     environment:
       VITE_API_URL: ${VITE_API_URL:-/api}
+      CHOKIDAR_USEPOLLING: "true"
+      WATCHPACK_POLLING: "true"
     ports:
       - "${FRONTEND_PORT:-5173}:5173"
     volumes:
