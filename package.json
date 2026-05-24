@@ -1,0 +1,13 @@
+{
+  "name": "projectplatform",
+  "private": true,
+  "scripts": {
+    "dev:backend": "npm run start:dev --prefix backend",
+    "dev:frontend": "npm run dev --prefix frontend",
+    "docker:up": "docker compose up -d postgres minio minio-init",
+    "docker:down": "docker compose down",
+    "docker:all": "docker compose up -d",
+    "db:migrate": "npm run prisma:migrate --prefix backend",
+    "db:generate": "npm run prisma:generate --prefix backend"
+  }
+}
