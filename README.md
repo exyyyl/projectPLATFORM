@@ -65,12 +65,18 @@ docker compose up -d
 ## Структура
 
 ```
-├── backend/          # NestJS + Prisma
+├── backend/          # NestJS + Prisma (см. backend/ARCHITECTURE.md)
 ├── frontend/         # React + Vite
 ├── nginx/            # Reverse proxy
 ├── docker-compose.yml
 └── .env.example
 ```
+
+### Backend API
+
+- Документация модулей: [backend/ARCHITECTURE.md](backend/ARCHITECTURE.md)
+- Префикс: `/v1/...` (через Nginx: `/api/v1/...`)
+- После обновления схемы: `cd backend && npx prisma migrate deploy`
 
 ## Post-MVP
 

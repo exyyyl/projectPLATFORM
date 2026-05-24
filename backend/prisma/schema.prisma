@@ -1,3 +1,6 @@
+// EduPlatform — схема БД по ТЗ v1.1 / Stack Guide
+// Миграция: npx prisma migrate dev
+
 generator client {
   provider = "prisma-client-js"
 }
@@ -6,10 +9,354 @@ datasource db {
   provider = "postgresql"
 }
 
+// --- Enums ---
+
+enum UserRole {
+  student
+  teacher
+  admin
+}
+
+enum GradingType {
+  pass_fail
+  scored
+}
+
+enum AssignmentStatus {
+  draft
+  published
+  closed
+}
+
+enum GradeResult {
+  passed
+  failed
+}
+
+enum MaterialType {
+  file
+  link
+}
+
+enum NotificationType {
+  submission_received
+  grade_posted
+  chat_message
+  news_published
+  assignment_published
+}
+
+enum NewsTargetRole {
+  all
+  student
+  teacher
+  admin
+}
+
+// --- Multi-tenant core ---
+
+model Tenant {
+  id        Int      @id @default(autoincrement())
+  name      String
+  domain    String?  @unique
+  isActive  Boolean  @default(true) @map("is_active")
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  users       User[]
+  groups      Group[]
+  disciplines Discipline[]
+  news        News[]
+
+  @@map("tenants")
+}
+
 model User {
-  id        String   @id @default(cuid())
-  email     String   @unique
-  name      String?
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  id           Int      @id @default(autoincrement())
+  tenantId     Int      @map("tenant_id")
+  email        String
+  passwordHash String   @map("password_hash")
+  fullName     String   @map("full_name")
+  role         UserRole
+  isActive     Boolean  @default(true) @map("is_active")
+  createdAt    DateTime @default(now()) @map("created_at")
+  updatedAt    DateTime @updatedAt @map("updated_at")
+
+  tenant              Tenant               @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  userGroups          UserGroup[]
+  disciplineTeachers  DisciplineTeacher[]
+  taughtCourses       Course[]             @relation("CourseTeacher")
+  submissions         Submission[]
+  gradedSubmissions   Grade[]              @relation("GradeGrader")
+  chatMessages        ChatMessage[]
+  notifications       Notification[]
+  uploadedMaterials   Material[]           @relation("MaterialUploader")
+  createdNews         News[]               @relation("NewsAuthor")
+  hiddenCourses       HiddenCourse[]
+  auditLogs           AuditLog[]
+  refreshTokens       RefreshToken[]
+
+  @@unique([tenantId, email])
+  @@map("users")
+}
+
+model RefreshToken {
+  id        Int      @id @default(autoincrement())
+  userId    Int      @map("user_id")
+  tokenHash String   @map("token_hash")
+  expiresAt DateTime @map("expires_at")
+  createdAt DateTime @default(now()) @map("created_at")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@map("refresh_tokens")
+}
+
+// --- Организационная структура ---
+
+model Group {
+  id         Int     @id @default(autoincrement())
+  tenantId   Int     @map("tenant_id")
+  name       String
+  courseYear Int?    @map("course_year")
+  direction  String?
+
+  tenant            Tenant             @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  userGroups        UserGroup[]
+  disciplineGroups  DisciplineGroup[]
+
+  @@map("groups")
+}
+
+model UserGroup {
+  userId  Int @map("user_id")
+  groupId Int @map("group_id")
+
+  user  User  @relation(fields: [userId], references: [id], onDelete: Cascade)
+  group Group @relation(fields: [groupId], references: [id], onDelete: Cascade)
+
+  @@id([userId, groupId])
+  @@map("user_groups")
+}
+
+model Discipline {
+  id          Int     @id @default(autoincrement())
+  tenantId    Int     @map("tenant_id")
+  name        String
+  description String?
+
+  tenant             Tenant              @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  disciplineTeachers DisciplineTeacher[]
+  disciplineGroups   DisciplineGroup[]
+  courses            Course[]
+
+  @@map("disciplines")
+}
+
+model DisciplineTeacher {
+  disciplineId Int @map("discipline_id")
+  userId       Int @map("user_id")
+
+  discipline Discipline @relation(fields: [disciplineId], references: [id], onDelete: Cascade)
+  teacher    User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@id([disciplineId, userId])
+  @@map("discipline_teachers")
+}
+
+model DisciplineGroup {
+  disciplineId Int @map("discipline_id")
+  groupId      Int @map("group_id")
+
+  discipline Discipline @relation(fields: [disciplineId], references: [id], onDelete: Cascade)
+  group      Group      @relation(fields: [groupId], references: [id], onDelete: Cascade)
+
+  @@id([disciplineId, groupId])
+  @@map("discipline_groups")
+}
+
+// --- Учебный контент ---
+
+model Course {
+  id           Int @id @default(autoincrement())
+  disciplineId Int @map("discipline_id")
+  teacherId    Int @map("teacher_id")
+
+  discipline  Discipline   @relation(fields: [disciplineId], references: [id], onDelete: Cascade)
+  teacher     User         @relation("CourseTeacher", fields: [teacherId], references: [id], onDelete: Restrict)
+  blocks      CourseBlock[]
+  materials   Material[]
+  assignments Assignment[]
+  hiddenBy    HiddenCourse[]
+
+  @@map("courses")
+}
+
+model CourseBlock {
+  id         Int  @id @default(autoincrement())
+  courseId   Int  @map("course_id")
+  title      String
+  orderIndex Int  @map("order_index")
+  content    Json @default("{}")
+
+  course    Course     @relation(fields: [courseId], references: [id], onDelete: Cascade)
+  materials Material[]
+
+  @@map("course_blocks")
+}
+
+model Material {
+  id         Int          @id @default(autoincrement())
+  courseId   Int          @map("course_id")
+  blockId    Int?         @map("block_id")
+  title      String
+  type       MaterialType
+  url        String?
+  filePath   String?      @map("file_path")
+  uploadedBy Int          @map("uploaded_by")
+  createdAt  DateTime     @default(now()) @map("created_at")
+
+  course   Course       @relation(fields: [courseId], references: [id], onDelete: Cascade)
+  block    CourseBlock? @relation(fields: [blockId], references: [id], onDelete: SetNull)
+  uploader User         @relation("MaterialUploader", fields: [uploadedBy], references: [id], onDelete: Restrict)
+
+  @@map("materials")
+}
+
+model Assignment {
+  id                 Int              @id @default(autoincrement())
+  courseId           Int              @map("course_id")
+  title              String
+  description        String           @default("")
+  gradingType        GradingType      @map("grading_type")
+  maxScore           Int?             @map("max_score")
+  deadline           DateTime?
+  status             AssignmentStatus @default(draft)
+  allowedExtensions  String[]         @default([]) @map("allowed_extensions")
+  createdBy          Int              @map("created_by")
+  createdAt          DateTime         @default(now()) @map("created_at")
+  updatedAt          DateTime         @updatedAt @map("updated_at")
+
+  course       Course        @relation(fields: [courseId], references: [id], onDelete: Cascade)
+  submissions  Submission[]
+  chatMessages ChatMessage[]
+
+  @@map("assignments")
+}
+
+model Submission {
+  id             Int      @id @default(autoincrement())
+  assignmentId   Int      @map("assignment_id")
+  studentId      Int      @map("student_id")
+  submittedAt    DateTime @default(now()) @map("submitted_at")
+  attemptNumber  Int      @map("attempt_number")
+  studentComment String?  @map("student_comment")
+
+  assignment Assignment       @relation(fields: [assignmentId], references: [id], onDelete: Cascade)
+  student    User             @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  files      SubmissionFile[]
+  grade      Grade?
+
+  @@unique([assignmentId, studentId, attemptNumber])
+  @@map("submissions")
+}
+
+model SubmissionFile {
+  id           Int    @id @default(autoincrement())
+  submissionId Int    @map("submission_id")
+  filePath     String @map("file_path")
+  originalName String @map("original_name")
+  mimeType     String @map("mime_type")
+  sizeBytes    Int    @map("size_bytes")
+
+  submission Submission @relation(fields: [submissionId], references: [id], onDelete: Cascade)
+
+  @@map("submission_files")
+}
+
+model Grade {
+  id           Int          @id @default(autoincrement())
+  submissionId Int          @unique @map("submission_id")
+  graderId     Int          @map("grader_id")
+  result       GradeResult?
+  score        Decimal?     @db.Decimal(5, 2)
+  comment      String?
+  gradedAt     DateTime     @default(now()) @map("graded_at")
+
+  submission Submission @relation(fields: [submissionId], references: [id], onDelete: Cascade)
+  grader     User       @relation("GradeGrader", fields: [graderId], references: [id], onDelete: Restrict)
+
+  @@map("grades")
+}
+
+model ChatMessage {
+  id           Int      @id @default(autoincrement())
+  assignmentId Int      @map("assignment_id")
+  senderId     Int      @map("sender_id")
+  content      String
+  createdAt    DateTime @default(now()) @map("created_at")
+
+  assignment Assignment @relation(fields: [assignmentId], references: [id], onDelete: Cascade)
+  sender     User       @relation(fields: [senderId], references: [id], onDelete: Cascade)
+
+  @@map("chat_messages")
+}
+
+// --- Вспомогательные сущности ---
+
+model Notification {
+  id            Int              @id @default(autoincrement())
+  userId        Int              @map("user_id")
+  type          NotificationType
+  referenceId   Int?             @map("reference_id")
+  referenceType String?          @map("reference_type")
+  isRead        Boolean          @default(false) @map("is_read")
+  createdAt     DateTime         @default(now()) @map("created_at")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, isRead])
+  @@map("notifications")
+}
+
+model News {
+  id         Int             @id @default(autoincrement())
+  tenantId   Int             @map("tenant_id")
+  title      String
+  body       String
+  targetRole NewsTargetRole? @map("target_role")
+  createdBy  Int             @map("created_by")
+  createdAt  DateTime        @default(now()) @map("created_at")
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  author User   @relation("NewsAuthor", fields: [createdBy], references: [id], onDelete: Restrict)
+
+  @@map("news")
+}
+
+model HiddenCourse {
+  userId   Int @map("user_id")
+  courseId Int @map("course_id")
+
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  course Course @relation(fields: [courseId], references: [id], onDelete: Cascade)
+
+  @@id([userId, courseId])
+  @@map("hidden_courses")
+}
+
+model AuditLog {
+  id        Int      @id @default(autoincrement())
+  userId    Int?     @map("user_id")
+  action    String
+  entity    String
+  entityId  Int?     @map("entity_id")
+  ip        String?
+  createdAt DateTime @default(now()) @map("created_at")
+
+  user User? @relation(fields: [userId], references: [id], onDelete: SetNull)
+
+  @@index([entity, entityId])
+  @@map("audit_logs")
 }
