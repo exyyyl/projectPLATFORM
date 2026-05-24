@@ -36,5 +36,9 @@ frontend/.vite/
 coverage/
 .nyc_output/
 
+# Playwright
+frontend/playwright-report/
+frontend/test-results/
+
 # Docker volumes (local data)
 .docker-data/

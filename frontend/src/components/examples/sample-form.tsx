@@ -1,5 +1,6 @@
 import { zodResolver } from '@hookform/resolvers/zod'
 import { useForm } from 'react-hook-form'
+import { toast } from 'sonner'
 import { z } from 'zod'
 
 import { Button } from '@/components/ui/button'
@@ -16,27 +17,57 @@ export function SampleForm() {
   const {
     register,
     handleSubmit,
+    reset,
     formState: { errors },
   } = useForm<FormValues>({
     resolver: zodResolver(schema),
     defaultValues: { email: '', name: '' },
   })
 
+  const onSubmit = (data: FormValues) => {
+    toast.success(`Форма отправлена: ${data.name}`)
+    reset()
+  }
+
   return (
     <form
       className="space-y-3"
-      onSubmit={handleSubmit((data) => console.log(data))}
+      onSubmit={handleSubmit(onSubmit)}
+      noValidate
     >
       <div>
-        <Input placeholder="Email" {...register('email')} />
+        <label htmlFor="email" className="sr-only">
+          Email
+        </label>
+        <Input
+          id="email"
+          type="email"
+          placeholder="Email"
+          aria-invalid={!!errors.email}
+          aria-describedby={errors.email ? 'email-error' : undefined}
+          {...register('email')}
+        />
         {errors.email && (
-          <p className="mt-1 text-sm text-destructive">{errors.email.message}</p>
+          <p id="email-error" role="alert" className="mt-1 text-sm text-destructive">
+            {errors.email.message}
+          </p>
         )}
       </div>
       <div>
-        <Input placeholder="Имя" {...register('name')} />
+        <label htmlFor="name" className="sr-only">
+          Имя
+        </label>
+        <Input
+          id="name"
+          placeholder="Имя"
+          aria-invalid={!!errors.name}
+          aria-describedby={errors.name ? 'name-error' : undefined}
+          {...register('name')}
+        />
         {errors.name && (
-          <p className="mt-1 text-sm text-destructive">{errors.name.message}</p>
+          <p id="name-error" role="alert" className="mt-1 text-sm text-destructive">
+            {errors.name.message}
+          </p>
         )}
       </div>
       <Button type="submit">Отправить</Button>
