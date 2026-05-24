@@ -1,0 +1,26 @@
+import { expect, test } from '@playwright/test'
+
+test.describe('Navigation', () => {
+  test('loads the dashboard page', async ({ page }) => {
+    await page.goto('/')
+
+    await expect(page.getByRole('heading', { name: 'projectPLATFORM' })).toBeVisible()
+    await expect(page.getByText('dev')).toBeVisible()
+  })
+
+  test('shows 404 for unknown routes', async ({ page }) => {
+    await page.goto('/nonexistent-page')
+
+    await expect(page.getByText('404')).toBeVisible()
+    await expect(page.getByText('Страница не найдена')).toBeVisible()
+    await expect(page.getByRole('link', { name: 'На главную' })).toBeVisible()
+  })
+
+  test('navigates back from 404 to home', async ({ page }) => {
+    await page.goto('/nonexistent-page')
+
+    await page.getByRole('link', { name: 'На главную' }).click()
+
+    await expect(page.getByText('React Hook Form + Zod')).toBeVisible()
+  })
+})

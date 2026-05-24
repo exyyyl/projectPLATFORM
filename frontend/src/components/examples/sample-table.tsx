@@ -26,13 +26,13 @@ export function SampleTable() {
   })
 
   return (
-    <div className="overflow-x-auto rounded-md border">
+    <div className="overflow-x-auto rounded-md border" role="region" aria-label="Таблица пользователей">
       <table className="w-full text-sm">
         <thead className="bg-muted/50">
           {table.getHeaderGroups().map((hg) => (
             <tr key={hg.id}>
               {hg.headers.map((h) => (
-                <th key={h.id} className="px-4 py-2 text-left font-medium">
+                <th key={h.id} scope="col" className="px-4 py-2 text-left font-medium">
                   {flexRender(h.column.columnDef.header, h.getContext())}
                 </th>
               ))}

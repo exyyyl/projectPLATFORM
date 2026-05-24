@@ -360,3 +360,4 @@ model AuditLog {
   @@index([entity, entityId])
   @@map("audit_logs")
 }
+
