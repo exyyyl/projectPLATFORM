@@ -5,13 +5,14 @@ import {
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { JwtService } from '@nestjs/jwt';
+import { UserRole } from '@prisma/client';
 import * as bcrypt from 'bcrypt';
 import type { StringValue } from 'ms';
 import { PrismaService } from '../prisma/prisma.service';
 import { LoginDto, RegisterDto } from './dto';
 
 interface TokenPayload {
-  sub: string;
+  sub: number;
   email: string;
 }
 
@@ -32,14 +33,21 @@ export class AuthService {
   ) {
     this.refreshSecret = this.config.getOrThrow<string>('JWT_REFRESH_SECRET');
     this.refreshExpiresIn = this.config.get<string>(
-      'JWT_REFRESH_EXPIRES_IN',
+      'JWT_REFRESH_TTL',
       '7d',
     ) as StringValue;
   }
 
   async register(dto: RegisterDto): Promise<AuthTokens> {
+    const tenant = await this.prisma.tenant.findFirst();
+    if (!tenant) {
+      throw new ConflictException('No tenant configured. Run prisma db seed.');
+    }
+
     const existing = await this.prisma.user.findUnique({
-      where: { email: dto.email },
+      where: {
+        tenantId_email: { tenantId: tenant.id, email: dto.email },
+      },
     });
     if (existing) {
       throw new ConflictException('Email already registered');
@@ -49,9 +57,11 @@ export class AuthService {
 
     const user = await this.prisma.user.create({
       data: {
+        tenantId: tenant.id,
         email: dto.email,
-        name: dto.name,
+        fullName: dto.name?.trim() || dto.email,
         passwordHash,
+        role: UserRole.student,
       },
     });
 
@@ -59,8 +69,8 @@ export class AuthService {
   }
 
   async login(dto: LoginDto): Promise<AuthTokens> {
-    const user = await this.prisma.user.findUnique({
-      where: { email: dto.email },
+    const user = await this.prisma.user.findFirst({
+      where: { email: dto.email, isActive: true },
     });
     if (!user) {
       throw new UnauthorizedException('Invalid credentials');
@@ -83,7 +93,7 @@ export class AuthService {
       const user = await this.prisma.user.findUnique({
         where: { id: payload.sub },
       });
-      if (!user) {
+      if (!user || !user.isActive) {
         throw new UnauthorizedException();
       }
 

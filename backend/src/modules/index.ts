@@ -1,6 +1,5 @@
 export { AdminModule } from './admin/admin.module';
 export { AssignmentsModule } from './assignments/assignments.module';
-export { AuthModule } from './auth/auth.module';
 export { ChatModule } from './chat/chat.module';
 export { CoursesModule } from './courses/courses.module';
 export { DisciplinesModule } from './disciplines/disciplines.module';
