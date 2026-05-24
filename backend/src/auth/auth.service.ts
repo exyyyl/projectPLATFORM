@@ -6,6 +6,7 @@ import {
 import { ConfigService } from '@nestjs/config';
 import { JwtService } from '@nestjs/jwt';
 import * as bcrypt from 'bcrypt';
+import type { StringValue } from 'ms';
 import { PrismaService } from '../prisma/prisma.service';
 import { LoginDto, RegisterDto } from './dto';
 
@@ -22,7 +23,7 @@ interface AuthTokens {
 @Injectable()
 export class AuthService {
   private readonly refreshSecret: string;
-  private readonly refreshExpiresIn: string;
+  private readonly refreshExpiresIn: StringValue;
 
   constructor(
     private readonly prisma: PrismaService,
@@ -33,7 +34,7 @@ export class AuthService {
     this.refreshExpiresIn = this.config.get<string>(
       'JWT_REFRESH_EXPIRES_IN',
       '7d',
-    );
+    ) as StringValue;
   }
 
   async register(dto: RegisterDto): Promise<AuthTokens> {
