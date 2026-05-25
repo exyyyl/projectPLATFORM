@@ -1,5 +1,3 @@
-/* eslint-disable react-refresh/only-export-components */
-
 import { Component } from 'react'
 import type { ErrorInfo, ReactNode } from 'react'
 
