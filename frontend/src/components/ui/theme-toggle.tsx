@@ -1,3 +1,5 @@
+/* eslint-disable react-refresh/only-export-components */
+
 import { Monitor, Moon, Sun } from 'lucide-react'
 
 import { useTheme } from '@/hooks/use-theme'

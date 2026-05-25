@@ -28,6 +28,7 @@
     "clsx": "^2.1.1",
     "lucide-react": "^1.16.0",
     "pdfjs-dist": "^5.4.296",
+    "projectplatform": "file:..",
     "radix-ui": "^1.4.3",
     "react": "^19.2.6",
     "react-dom": "^19.2.6",

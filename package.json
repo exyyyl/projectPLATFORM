@@ -2,12 +2,27 @@
   "name": "projectplatform",
   "private": true,
   "scripts": {
-    "dev:backend": "npm run start:dev --prefix backend",
+    "setup": "npm install && npm install --prefix backend && npm install --prefix frontend",
+    "dev": "concurrently -n db,back,front -c blue,green,magenta \"npm run docker:up\" \"npm run dev:backend\" \"npm run dev:frontend\"",
+    "dev:backend": "npm run dev:watch --prefix backend",
     "dev:frontend": "npm run dev --prefix frontend",
+    "build": "npm run build:backend && npm run build:frontend",
+    "build:backend": "npm run build --prefix backend",
+    "build:frontend": "npm run build --prefix frontend",
+    "lint": "npm run lint:backend && npm run lint:frontend",
+    "lint:backend": "npm run lint --prefix backend",
+    "lint:frontend": "npm run lint --prefix frontend",
+    "test": "npm run test:backend && npm run test:frontend",
+    "test:backend": "npm run test --prefix backend",
+    "test:frontend": "npm run test --prefix frontend",
     "docker:up": "docker compose up -d postgres minio minio-init",
     "docker:down": "docker compose down",
     "docker:all": "docker compose up -d",
     "db:migrate": "npm run prisma:migrate --prefix backend",
-    "db:generate": "npm run prisma:generate --prefix backend"
+    "db:generate": "npm run prisma:generate --prefix backend",
+    "db:studio": "npm run prisma:studio --prefix backend"
+  },
+  "devDependencies": {
+    "concurrently": "^9.2.1"
   }
 }
