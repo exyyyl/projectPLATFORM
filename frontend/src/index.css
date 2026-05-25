@@ -99,6 +99,7 @@
 @layer base {
   * {
     @apply border-border outline-ring/50;
+    transition: background-color 0.3s ease, order-color 0.3s ease, box-shadow 0.3s ease;
   }
   html {
     @apply bg-background text-foreground font-sans antialiased;
