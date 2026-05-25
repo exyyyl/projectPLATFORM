@@ -3,7 +3,7 @@ import { NavLink } from "react-router-dom";
 import { ThemeToggle } from "@/components/ui/theme-toggle";
 import { apiFetch } from "@/lib/api";
 import { cn } from "@/lib/utils";
-import { buttonVariants } from "../ui/button-variants";
+import { buttonVariants } from "@/components/ui/button";
 
 const links = [
   { to: "/", label: "Главная" },
