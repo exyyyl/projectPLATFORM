@@ -15,7 +15,19 @@ export default function NewsPage() {
 
   return (
     <main className="mx-auto max-w-6xl space-y-8">
-      <section>
+      {systemNews.length > 0 && (
+        <section className="space-y-4">
+          <h2 className="text-lg font-semibold">Системные уведомления</h2>
+          <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+            {systemNews.map((news) => (
+              <NewsCard key={news.id} news={news} />
+            ))}
+          </div>
+        </section>
+      )}
+
+      <section className="space-y-4">
+        <h2 className="text-lg font-semibold">Новости</h2>
         <Tabs
           value={selectedRole}
           onValueChange={(v) => setSelectedRole(v as NewsRole)}
@@ -33,21 +45,6 @@ export default function NewsPage() {
             </div>
           </TabsContent>
         </Tabs>
-        <h2>Системные новости</h2>
-        <div className="space-y-4 mt-4">
-          {systemNews.map((news) => (
-            <NewsCard key={news.id} news={news} />
-          ))}
-        </div>
-      </section>
-
-      <section>
-        <h2>Новости</h2>
-        <div className="space-y-4 mt-4">
-          {generalNews.map((news) => (
-            <NewsCard key={news.id} news={news} />
-          ))}
-        </div>
       </section>
     </main>
   );

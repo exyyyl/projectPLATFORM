@@ -4,6 +4,7 @@ import { ThemeToggle } from "@/components/ui/theme-toggle";
 import { apiFetch } from "@/lib/api";
 import { cn } from "@/lib/utils";
 import { buttonVariants } from "@/components/ui/button";
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 
 const links = [
   { to: "/", label: "Главная" },
@@ -30,8 +31,11 @@ export function Header() {
               end={link.to === "/"}
               className={({ isActive }) =>
                 cn(
-                  buttonVariants({ variant: "outline", size: "default" }),
-                  isActive && "bg-accent text-accent-foreground",
+                  buttonVariants({
+                    variant: isActive ? "default" : "ghost",
+                    size: "default",
+                  }),
+                  isActive && "bg-primary hover:bg-primary/70",
                 )
               }
             >
@@ -51,6 +55,13 @@ export function Header() {
             )}
           </span>
           <ThemeToggle />
+          <Avatar>
+            <AvatarImage
+              src="https://avatars.githubusercontent.com/u/79035965?v=4"
+              alt="avatar"
+            />
+            <AvatarFallback>AV</AvatarFallback>
+          </Avatar>
         </div>
       </div>
     </header>

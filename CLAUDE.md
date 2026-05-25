@@ -16,27 +16,41 @@
 
 ## Commands
 
+All commands run from the project root.
+
 ```bash
-# Root
-npm run dev          # Start all services via Docker Compose
-npm run dev:stop     # Stop all services
+# Setup
+npm run setup        # Install dependencies for root, backend, and frontend
 
-# Backend (from /backend)
-npm run start:dev    # NestJS dev with hot reload
-npm run build        # Production build
-npm run test         # Unit tests
-npm run test:e2e     # E2E tests
-npx prisma migrate dev   # Run migrations
-npx prisma generate      # Generate Prisma client
+# Development
+npm run dev          # Start DB + backend + frontend concurrently
+npm run dev:backend  # NestJS dev with hot reload
+npm run dev:frontend # Vite dev server
 
-# Frontend (from /frontend)
-npm run dev          # Vite dev server
-npm run build        # Production build
-npm run lint         # ESLint
-npm run test         # Vitest unit tests
-npm run test:watch   # Vitest watch mode
-npm run test:e2e     # Playwright E2E tests
-npm run test:e2e:ui  # Playwright UI mode
+# Build
+npm run build            # Build backend and frontend
+npm run build:backend    # Build backend only
+npm run build:frontend   # Build frontend only
+
+# Lint
+npm run lint             # Lint backend and frontend
+npm run lint:backend     # Lint backend only
+npm run lint:frontend    # Lint frontend only
+
+# Test
+npm run test             # Test backend and frontend
+npm run test:backend     # Jest unit tests (backend)
+npm run test:frontend    # Vitest unit tests (frontend)
+
+# Database
+npm run db:migrate   # Run Prisma migrations
+npm run db:generate  # Generate Prisma client
+npm run db:studio    # Open Prisma Studio
+
+# Docker
+npm run docker:up    # Start Postgres + MinIO
+npm run docker:down  # Stop all containers
+npm run docker:all   # Start all services (including backend, frontend, nginx)
 
 # Production
 docker compose -f docker-compose.prod.yml up --build
