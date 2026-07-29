@@ -139,7 +139,13 @@ docker compose up -d
 └── package.json          # Корневые скрипты для всего проекта
 ```
 
-## Переменные окружения
+### Backend API
+
+- Документация модулей: [backend/ARCHITECTURE.md](backend/ARCHITECTURE.md)
+- Префикс: `/v1/...` (через Nginx: `/api/v1/...`)
+- После обновления схемы: `cd backend && npx prisma migrate deploy`
+
+## Post-MVP
 
 Скопируйте `.env.example` → `.env` и `backend/.env.example` → `backend/.env`. Основные переменные:
 

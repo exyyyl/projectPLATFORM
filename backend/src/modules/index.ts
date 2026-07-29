@@ -1,0 +1,13 @@
+export { AdminModule } from './admin/admin.module';
+export { AssignmentsModule } from './assignments/assignments.module';
+export { ChatModule } from './chat/chat.module';
+export { CoursesModule } from './courses/courses.module';
+export { DisciplinesModule } from './disciplines/disciplines.module';
+export { FilesModule } from './files/files.module';
+export { GradesModule } from './grades/grades.module';
+export { GroupsModule } from './groups/groups.module';
+export { MaterialsModule } from './materials/materials.module';
+export { NewsModule } from './news/news.module';
+export { NotificationsModule } from './notifications/notifications.module';
+export { SubmissionsModule } from './submissions/submissions.module';
+export { UsersModule } from './users/users.module';
