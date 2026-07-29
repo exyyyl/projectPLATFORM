@@ -4,8 +4,13 @@ test.describe('Navigation', () => {
   test('loads the dashboard page', async ({ page }) => {
     await page.goto('/')
 
-    await expect(page.getByRole('heading', { name: 'projectPLATFORM' })).toBeVisible()
-    await expect(page.getByText('dev')).toBeVisible()
+    await expect(
+      page.getByRole('region', { name: 'Демонстрация компонентов' }),
+    ).toBeVisible()
+    await expect(page.getByRole('link', { name: 'Главная' })).toHaveAttribute(
+      'aria-current',
+      'page',
+    )
   })
 
   test('shows 404 for unknown routes', async ({ page }) => {
