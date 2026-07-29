@@ -18,6 +18,20 @@ export const router = createBrowserRouter([
         },
       },
       {
+        path: "courses/:courseId",
+        lazy: async () => {
+          const { default: Component } = await import("@/pages/course-detail");
+          return { Component };
+        },
+      },
+      {
+        path: "courses/:courseId/resources/:resourceId",
+        lazy: async () => {
+          const { default: Component } = await import("@/pages/course-resource");
+          return { Component };
+        },
+      },
+      {
         path: "news",
         lazy: async () => {
           const { default: Component } = await import("@/pages/news");
@@ -27,7 +41,14 @@ export const router = createBrowserRouter([
       {
         path: "login",
         lazy: async () => {
-          const { default: Component } = await import("@/pages/loginPage");
+          const { default: Component } = await import("@/pages/login-page");
+          return { Component };
+        },
+      },
+      {
+        path: "profile",
+        lazy: async () => {
+          const { default: Component } = await import("@/pages/profile");
           return { Component };
         },
       },
