@@ -7,6 +7,8 @@ export class CoursesController {
 
   @Get()
   findAll() {
+
+
     return { message: 'TODO: GET /courses' };
   }
 
