@@ -42,3 +42,6 @@ frontend/test-results/
 
 # Docker volumes (local data)
 .docker-data/
+
+# Local archives
+/backend.zip
