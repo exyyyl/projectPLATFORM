@@ -5,21 +5,20 @@ import {
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { JwtService } from '@nestjs/jwt';
-import { UserRole } from '@prisma/client';
+import { type User, UserRole } from '@prisma/client';
 import * as bcrypt from 'bcrypt';
+import { createHash, randomUUID } from 'crypto';
 import type { StringValue } from 'ms';
 import { PrismaService } from '../prisma/prisma.service';
 import { LoginDto, RegisterDto } from './dto';
-
-interface TokenPayload {
-  sub: number;
-  email: string;
-}
+import { TokenPayload } from './interfaces/token-payload';
 
 interface AuthTokens {
   accessToken: string;
   refreshToken: string;
 }
+
+type TokenUser = Pick<User, 'id' | 'tenantId' | 'email' | 'role'>;
 
 @Injectable()
 export class AuthService {
@@ -54,7 +53,6 @@ export class AuthService {
     }
 
     const passwordHash = await bcrypt.hash(dto.password, 12);
-
     const user = await this.prisma.user.create({
       data: {
         tenantId: tenant.id,
@@ -65,7 +63,7 @@ export class AuthService {
       },
     });
 
-    return this.generateTokens({ sub: user.id, email: user.email });
+    return this.issueTokens(user);
   }
 
   async login(dto: LoginDto): Promise<AuthTokens> {
@@ -81,14 +79,33 @@ export class AuthService {
       throw new UnauthorizedException('Invalid credentials');
     }
 
-    return this.generateTokens({ sub: user.id, email: user.email });
+    return this.issueTokens(user);
   }
 
   async refreshTokens(refreshToken: string): Promise<AuthTokens> {
+    if (!refreshToken) {
+      throw new UnauthorizedException('Refresh token is required');
+    }
+
     try {
       const payload = await this.jwt.verifyAsync<TokenPayload>(refreshToken, {
         secret: this.refreshSecret,
       });
+      if (payload.tokenType !== 'refresh') {
+        throw new UnauthorizedException();
+      }
+
+      const tokenHash = this.hashRefreshToken(refreshToken);
+      const storedToken = await this.prisma.refreshToken.findFirst({
+        where: {
+          userId: payload.sub,
+          tokenHash,
+          expiresAt: { gt: new Date() },
+        },
+      });
+      if (!storedToken) {
+        throw new UnauthorizedException();
+      }
 
       const user = await this.prisma.user.findUnique({
         where: { id: payload.sub },
@@ -97,21 +114,113 @@ export class AuthService {
         throw new UnauthorizedException();
       }
 
-      return this.generateTokens({ sub: user.id, email: user.email });
+      const deleted = await this.prisma.refreshToken.deleteMany({
+        where: {
+          id: storedToken.id,
+          tokenHash,
+        },
+      });
+      if (deleted.count !== 1) {
+        throw new UnauthorizedException();
+      }
+
+      return this.issueTokens(user);
     } catch {
       throw new UnauthorizedException('Invalid refresh token');
     }
   }
 
-  private async generateTokens(payload: TokenPayload): Promise<AuthTokens> {
-    const [accessToken, refreshToken] = await Promise.all([
-      this.jwt.signAsync(payload),
-      this.jwt.signAsync(payload, {
+  async hasActiveRefreshSession(refreshToken: string): Promise<boolean> {
+    if (!refreshToken) {
+      return false;
+    }
+
+    try {
+      const payload = await this.jwt.verifyAsync<TokenPayload>(refreshToken, {
         secret: this.refreshSecret,
-        expiresIn: this.refreshExpiresIn,
+      });
+      if (payload.tokenType !== 'refresh') {
+        return false;
+      }
+
+      const storedToken = await this.prisma.refreshToken.findFirst({
+        where: {
+          userId: payload.sub,
+          tokenHash: this.hashRefreshToken(refreshToken),
+          expiresAt: { gt: new Date() },
+          user: { isActive: true },
+        },
+      });
+
+      return storedToken !== null;
+    } catch {
+      return false;
+    }
+  }
+
+  async logout(refreshToken: string): Promise<void> {
+    if (!refreshToken) {
+      return;
+    }
+
+    await this.prisma.refreshToken.deleteMany({
+      where: {
+        tokenHash: this.hashRefreshToken(refreshToken),
+      },
+    });
+  }
+
+  private async issueTokens(user: TokenUser): Promise<AuthTokens> {
+    const basePayload = {
+      sub: user.id,
+      email: user.email,
+      role: user.role,
+      tenantId: user.tenantId,
+    };
+    const [accessToken, refreshToken] = await Promise.all([
+      this.jwt.signAsync({
+        ...basePayload,
+        tokenType: 'access',
+        jti: randomUUID(),
+      } satisfies TokenPayload),
+      this.jwt.signAsync(
+        {
+          ...basePayload,
+          tokenType: 'refresh',
+          jti: randomUUID(),
+        } satisfies TokenPayload,
+        {
+          secret: this.refreshSecret,
+          expiresIn: this.refreshExpiresIn,
+        },
+      ),
+    ]);
+
+    const decoded = this.jwt.decode<{ exp?: number }>(refreshToken);
+    if (!decoded?.exp) {
+      throw new UnauthorizedException('Refresh token has no expiration');
+    }
+
+    await this.prisma.$transaction([
+      this.prisma.refreshToken.deleteMany({
+        where: {
+          userId: user.id,
+          expiresAt: { lte: new Date() },
+        },
+      }),
+      this.prisma.refreshToken.create({
+        data: {
+          userId: user.id,
+          tokenHash: this.hashRefreshToken(refreshToken),
+          expiresAt: new Date(decoded.exp * 1000),
+        },
       }),
     ]);
 
     return { accessToken, refreshToken };
+  }
+
+  private hashRefreshToken(refreshToken: string): string {
+    return createHash('sha256').update(refreshToken).digest('hex');
   }
 }

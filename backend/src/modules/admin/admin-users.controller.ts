@@ -1,12 +1,15 @@
+import { Controller, Delete, Get, Param, Post, Put } from '@nestjs/common';
 import {
-  Controller,
-  Delete,
-  Get,
-  Param,
-  Post,
-  Put,
-} from '@nestjs/common';
-import { Public } from '../../common/decorators/public.decorator';
+  ApiBearerAuth,
+  ApiForbiddenResponse,
+  ApiOkResponse,
+  ApiTags,
+  ApiUnauthorizedResponse,
+} from '@nestjs/swagger';
+import {
+  CurrentUser,
+  JwtPayload,
+} from '../../common/decorators/current-user.decorator';
 import { Roles } from '../../common/decorators/roles.decorator';
 import { UserRole } from '@prisma/client';
 import { UsersService } from '../users/users.service';
@@ -16,15 +19,21 @@ import { UsersService } from '../users/users.service';
  * URL всегда с префиксом /admin/ — только для роли admin (после включения JWT).
  */
 @Roles(UserRole.admin)
+@ApiTags('admin/users')
+@ApiBearerAuth()
 @Controller('admin/users')
 export class AdminUsersController {
   constructor(private readonly usersService: UsersService) {}
 
   /** Тест: GET http://localhost:3000/v1/admin/users */
-  @Public()
   @Get()
-  findAll() {
-    return this.usersService.findAll();
+  @ApiOkResponse({ description: 'Users from the current admin tenant' })
+  @ApiUnauthorizedResponse({
+    description: 'Access token is missing or invalid',
+  })
+  @ApiForbiddenResponse({ description: 'Admin role is required' })
+  findAll(@CurrentUser() user: JwtPayload) {
+    return this.usersService.findAll(user.tenantId);
   }
 
   @Post()

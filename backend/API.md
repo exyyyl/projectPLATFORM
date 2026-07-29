@@ -31,14 +31,15 @@ Content-Type: application/json
 {"email":"admin@demo.local","password":"demo123"}
 ```
 
-Пока auth — заглушка; реальный вход будет позже.
+Auth уже реализован. Полное описание тела, ответа, cookie и вариантов ошибок:
+[API_REFERENCE.md](./API_REFERENCE.md#auth).
 
 ## Две зоны API
 
-| Зона | Префикс URL | Кто пользуется | Примеры |
-|------|-------------|----------------|---------|
-| **Платформа** | `/v1/...` (без `admin`) | студент, преподаватель | `/courses`, `/assignments`, `/users/me` |
-| **Админка** | `/v1/admin/...` | только admin | `/admin/users`, `/admin/groups`, `/admin/disciplines` |
+| Зона          | Префикс URL             | Кто пользуется         | Примеры                                               |
+| ------------- | ----------------------- | ---------------------- | ----------------------------------------------------- |
+| **Платформа** | `/v1/...` (без `admin`) | студент, преподаватель | `/courses`, `/assignments`, `/users/me`               |
+| **Админка**   | `/v1/admin/...`         | только admin           | `/admin/users`, `/admin/groups`, `/admin/disciplines` |
 
 На фронте:
 
@@ -47,15 +48,18 @@ Content-Type: application/json
 
 Один backend, разделение по URL и `@Roles(UserRole.admin)` на admin-контроллерах.
 
-## Тестовые запросы (сейчас)
+## Реализованные запросы (сейчас)
 
-| Действие | Метод | URL |
-|----------|-------|-----|
-| Health | GET | http://localhost:3000/health |
-| Список пользователей (тест) | GET | http://localhost:3000/v1/admin/users |
-| Заглушка login | POST | http://localhost:3000/v1/auth/login |
+| Действие                    | Метод | URL                                  |
+| --------------------------- | ----- | ------------------------------------ |
+| Health                      | GET   | http://localhost:3000/health         |
+| Вход                        | POST  | http://localhost:3000/v1/auth/login  |
+| Текущий профиль             | GET   | http://localhost:3000/v1/users/me    |
+| Обновление профиля          | PUT   | http://localhost:3000/v1/users/me    |
+| Список пользователей tenant | GET   | http://localhost:3000/v1/admin/users |
 
-`GET /v1/admin/users` временно с `@Public()` — убрать, когда подключим JWT.
+Все маршруты, кроме явно помеченных `@Public()`, защищены глобальным
+`JwtAuthGuard`. Для `/v1/admin/**` дополнительно требуется роль `admin`.
 
 ## Демо-данные
 
@@ -64,7 +68,9 @@ cd backend
 npx prisma db seed
 ```
 
-Создаёт tenant и пользователей `admin@demo.local`, `teacher@demo.local`, `student@demo.local` (пароль `demo123`).
+Создаёт tenant, связанные учебные данные и шесть demo-пользователей. Полный
+список email выводится командой seed; пароль всех demo-пользователей —
+`demo123`.
 
 ## Через Nginx (Docker)
 

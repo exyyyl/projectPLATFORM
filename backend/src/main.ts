@@ -37,6 +37,7 @@ async function bootstrap() {
     .setTitle('projectPLATFORM API')
     .setVersion('0.1.0')
     .addBearerAuth()
+    .addCookieAuth('refreshToken')
     .build();
   const document = SwaggerModule.createDocument(app, swaggerConfig);
   SwaggerModule.setup('docs', app, document);
