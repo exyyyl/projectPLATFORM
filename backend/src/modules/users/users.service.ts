@@ -1,11 +1,19 @@
 import {
   BadRequestException,
+  ConflictException,
   Injectable,
+  NotFoundException,
   UnauthorizedException,
 } from '@nestjs/common';
+import { Prisma, UserRole } from '@prisma/client';
 import * as bcrypt from 'bcrypt';
 import { PrismaService } from '../../prisma/prisma.service';
-import { UpdateProfileDto } from './dto';
+import {
+  AdminUsersQueryDto,
+  CreateAdminUserDto,
+  UpdateAdminUserDto,
+  UpdateProfileDto,
+} from './dto';
 
 const userPublicSelect = {
   id: true,
@@ -86,13 +94,163 @@ export class UsersService {
     return updatedUser;
   }
 
-  /** Список пользователей без password_hash (для admin). */
-  findAll(tenantId: number) {
-    return this.prisma.user.findMany({
-      where: { tenantId },
+  async findAll(tenantId: number, query: AdminUsersQueryDto) {
+    const where: Prisma.UserWhereInput = {
+      tenantId,
+      role: query.role,
+      isActive:
+        query.isActive === undefined
+          ? undefined
+          : query.isActive === 'true' || query.isActive === '1',
+      ...(query.search
+        ? {
+            OR: [
+              {
+                email: {
+                  contains: query.search,
+                  mode: Prisma.QueryMode.insensitive,
+                },
+              },
+              {
+                fullName: {
+                  contains: query.search,
+                  mode: Prisma.QueryMode.insensitive,
+                },
+              },
+            ],
+          }
+        : {}),
+    };
+    const skip = (query.page - 1) * query.limit;
+    const [items, total] = await this.prisma.$transaction([
+      this.prisma.user.findMany({
+        where,
+        select: userPublicSelect,
+        orderBy: { id: 'asc' },
+        skip,
+        take: query.limit,
+      }),
+      this.prisma.user.count({ where }),
+    ]);
+
+    return {
+      items,
+      pagination: {
+        page: query.page,
+        limit: query.limit,
+        total,
+        totalPages: Math.ceil(total / query.limit),
+      },
+    };
+  }
+
+  findOneForAdmin(userId: number, tenantId: number) {
+    return this.findTenantUser(userId, tenantId);
+  }
+
+  async createForAdmin(tenantId: number, dto: CreateAdminUserDto) {
+    const passwordHash = await bcrypt.hash(dto.password, 12);
+
+    try {
+      return await this.prisma.user.create({
+        data: {
+          tenantId,
+          email: dto.email,
+          fullName: dto.fullName,
+          passwordHash,
+          role: dto.role,
+          isActive: dto.isActive ?? true,
+        },
+        select: userPublicSelect,
+      });
+    } catch (error) {
+      this.rethrowUserWriteError(error);
+    }
+  }
+
+  async updateForAdmin(
+    userId: number,
+    tenantId: number,
+    actorUserId: number,
+    dto: UpdateAdminUserDto,
+  ) {
+    if (Object.values(dto).every((value) => value === undefined)) {
+      throw new BadRequestException('No user changes provided');
+    }
+    if (userId === actorUserId && dto.isActive === false) {
+      throw new BadRequestException('You cannot deactivate your own account');
+    }
+    if (
+      userId === actorUserId &&
+      dto.role !== undefined &&
+      dto.role !== UserRole.admin
+    ) {
+      throw new BadRequestException('You cannot remove your own admin role');
+    }
+
+    await this.findTenantUser(userId, tenantId);
+
+    const changes: {
+      email?: string;
+      fullName?: string;
+      passwordHash?: string;
+      role?: UserRole;
+      isActive?: boolean;
+    } = {
+      email: dto.email,
+      fullName: dto.fullName,
+      role: dto.role,
+      isActive: dto.isActive,
+    };
+    if (dto.password !== undefined) {
+      changes.passwordHash = await bcrypt.hash(dto.password, 12);
+    }
+
+    const updateUser = this.prisma.user.update({
+      where: { id: userId },
+      data: changes,
       select: userPublicSelect,
-      orderBy: { id: 'asc' },
     });
+    const shouldRevokeSessions =
+      dto.password !== undefined ||
+      dto.email !== undefined ||
+      dto.role !== undefined ||
+      dto.isActive === false;
+
+    try {
+      if (!shouldRevokeSessions) {
+        return await updateUser;
+      }
+
+      const [updatedUser] = await this.prisma.$transaction([
+        updateUser,
+        this.prisma.refreshToken.deleteMany({ where: { userId } }),
+      ]);
+      return updatedUser;
+    } catch (error) {
+      this.rethrowUserWriteError(error);
+    }
+  }
+
+  async deactivateForAdmin(
+    userId: number,
+    tenantId: number,
+    actorUserId: number,
+  ) {
+    if (userId === actorUserId) {
+      throw new BadRequestException('You cannot deactivate your own account');
+    }
+
+    await this.findTenantUser(userId, tenantId);
+    const [user] = await this.prisma.$transaction([
+      this.prisma.user.update({
+        where: { id: userId },
+        data: { isActive: false },
+        select: userPublicSelect,
+      }),
+      this.prisma.refreshToken.deleteMany({ where: { userId } }),
+    ]);
+    return user;
   }
 
   private async findActiveUser(userId: number, tenantId: number) {
@@ -105,5 +263,28 @@ export class UsersService {
     }
 
     return user;
+  }
+
+  private async findTenantUser(userId: number, tenantId: number) {
+    const user = await this.prisma.user.findFirst({
+      where: { id: userId, tenantId },
+      select: userPublicSelect,
+    });
+    if (!user) {
+      throw new NotFoundException('User not found');
+    }
+
+    return user;
+  }
+
+  private rethrowUserWriteError(error: unknown): never {
+    if (
+      error instanceof Prisma.PrismaClientKnownRequestError &&
+      error.code === 'P2002'
+    ) {
+      throw new ConflictException('Email already exists in this tenant');
+    }
+
+    throw error;
   }
 }

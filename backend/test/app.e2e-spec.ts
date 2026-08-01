@@ -14,6 +14,24 @@ interface TokenResponse {
   accessToken: string;
 }
 
+interface UserResponse {
+  id: number;
+  email: string;
+  fullName: string;
+  role: string;
+  isActive: boolean;
+}
+
+interface AdminUsersListResponse {
+  items: UserResponse[];
+  pagination: {
+    page: number;
+    limit: number;
+    total: number;
+    totalPages: number;
+  };
+}
+
 describe('App (e2e)', () => {
   let app: INestApplication<App>;
 
@@ -108,11 +126,148 @@ describe('App (e2e)', () => {
       .set('Authorization', `Bearer ${admin.accessToken}`)
       .expect(200);
 
-    expect(response.body).toEqual(
+    const users = response.body as AdminUsersListResponse;
+    expect(users.items).toEqual(
       expect.arrayContaining([
         expect.objectContaining({ email: 'admin@demo.local', role: 'admin' }),
       ]),
     );
+  });
+
+  it('supports the tenant-scoped admin user lifecycle', async () => {
+    const admin = await login('admin@demo.local');
+    const adminProfile = await request(app.getHttpServer())
+      .get(`/${API_PREFIX}/users/me`)
+      .set('Authorization', `Bearer ${admin.accessToken}`)
+      .expect(200);
+    const adminId = (adminProfile.body as UserResponse).id;
+    const email = `managed-${Date.now()}@demo.local`;
+
+    const createdResponse = await request(app.getHttpServer())
+      .post(`/${API_PREFIX}/admin/users`)
+      .set('Authorization', `Bearer ${admin.accessToken}`)
+      .send({
+        email,
+        fullName: 'Managed Student',
+        role: 'student',
+        password: 'managed-password',
+      })
+      .expect(201);
+    const createdUser = createdResponse.body as UserResponse;
+
+    expect(createdUser).toEqual(
+      expect.objectContaining({
+        email,
+        fullName: 'Managed Student',
+        role: 'student',
+        isActive: true,
+      }),
+    );
+    expect(createdUser).not.toHaveProperty('passwordHash');
+
+    await request(app.getHttpServer())
+      .post(`/${API_PREFIX}/admin/users`)
+      .set('Authorization', `Bearer ${admin.accessToken}`)
+      .send({
+        email,
+        fullName: 'Duplicate Student',
+        role: 'student',
+        password: 'managed-password',
+      })
+      .expect(409);
+
+    const listResponse = await request(app.getHttpServer())
+      .get(`/${API_PREFIX}/admin/users`)
+      .query({
+        page: 1,
+        limit: 5,
+        search: 'managed student',
+        role: 'student',
+        isActive: 'true',
+      })
+      .set('Authorization', `Bearer ${admin.accessToken}`)
+      .expect(200);
+
+    const users = listResponse.body as AdminUsersListResponse;
+    expect(users.items).toEqual([
+      expect.objectContaining({ id: createdUser.id, email }),
+    ]);
+    expect(users.pagination).toEqual({
+      page: 1,
+      limit: 5,
+      total: 1,
+      totalPages: 1,
+    });
+
+    await request(app.getHttpServer())
+      .get(`/${API_PREFIX}/admin/users/${createdUser.id}`)
+      .set('Authorization', `Bearer ${admin.accessToken}`)
+      .expect(200)
+      .expect(({ body }: Response) => {
+        expect(body).toEqual(expect.objectContaining({ email }));
+      });
+
+    await request(app.getHttpServer())
+      .put(`/${API_PREFIX}/admin/users/${createdUser.id}`)
+      .set('Authorization', `Bearer ${admin.accessToken}`)
+      .send({})
+      .expect(400);
+
+    const updatedResponse = await request(app.getHttpServer())
+      .put(`/${API_PREFIX}/admin/users/${createdUser.id}`)
+      .set('Authorization', `Bearer ${admin.accessToken}`)
+      .send({
+        fullName: 'Managed Teacher',
+        role: 'teacher',
+        password: 'updated-password',
+      })
+      .expect(200);
+    expect(updatedResponse.body).toEqual(
+      expect.objectContaining({
+        id: createdUser.id,
+        fullName: 'Managed Teacher',
+        role: 'teacher',
+      }),
+    );
+
+    const managedLogin = await request(app.getHttpServer())
+      .post(`/${API_PREFIX}/auth/login`)
+      .send({ email, password: 'updated-password' })
+      .expect(201);
+    const managedRefreshCookie = getRefreshCookie(managedLogin);
+
+    await request(app.getHttpServer())
+      .delete(`/${API_PREFIX}/admin/users/${adminId}`)
+      .set('Authorization', `Bearer ${admin.accessToken}`)
+      .expect(400);
+
+    const deactivatedResponse = await request(app.getHttpServer())
+      .delete(`/${API_PREFIX}/admin/users/${createdUser.id}`)
+      .set('Authorization', `Bearer ${admin.accessToken}`)
+      .expect(200);
+    expect(deactivatedResponse.body).toEqual(
+      expect.objectContaining({ id: createdUser.id, isActive: false }),
+    );
+
+    await request(app.getHttpServer())
+      .post(`/${API_PREFIX}/auth/refresh`)
+      .set('Cookie', managedRefreshCookie)
+      .expect(401);
+
+    await request(app.getHttpServer())
+      .post(`/${API_PREFIX}/auth/login`)
+      .send({ email, password: 'updated-password' })
+      .expect(401);
+
+    const inactiveList = await request(app.getHttpServer())
+      .get(`/${API_PREFIX}/admin/users`)
+      .query({ search: email, isActive: 'false' })
+      .set('Authorization', `Bearer ${admin.accessToken}`)
+      .expect(200);
+    const inactiveUsers = inactiveList.body as AdminUsersListResponse;
+    expect(inactiveUsers.items).toEqual([
+      expect.objectContaining({ id: createdUser.id, isActive: false }),
+    ]);
   });
 
   it('rotates refresh tokens and revokes the active token on logout', async () => {
