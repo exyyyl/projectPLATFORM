@@ -1,5 +1,11 @@
 import { PrismaPg } from '@prisma/adapter-pg';
-import { GradeResult, Prisma, PrismaClient, type User } from '@prisma/client';
+import {
+  GradeResult,
+  NewsStatus,
+  Prisma,
+  PrismaClient,
+  type User,
+} from '@prisma/client';
 import * as bcrypt from 'bcrypt';
 import { Pool } from 'pg';
 import {
@@ -196,6 +202,31 @@ async function seedDatabase(prisma: PrismaClient): Promise<void> {
           },
           {
             disciplineId: webDevelopment.id,
+            groupId: informationSystemsGroup.id,
+          },
+        ],
+      });
+
+      await tx.teachingAssignment.createMany({
+        data: [
+          {
+            disciplineId: algorithms.id,
+            teacherId: users.teacher.id,
+            groupId: softwareEngineeringGroup.id,
+          },
+          {
+            disciplineId: databases.id,
+            teacherId: users.secondTeacher.id,
+            groupId: softwareEngineeringGroup.id,
+          },
+          {
+            disciplineId: databases.id,
+            teacherId: users.secondTeacher.id,
+            groupId: informationSystemsGroup.id,
+          },
+          {
+            disciplineId: webDevelopment.id,
+            teacherId: users.teacher.id,
             groupId: informationSystemsGroup.id,
           },
         ],
@@ -481,29 +512,44 @@ async function seedDatabase(prisma: PrismaClient): Promise<void> {
           {
             tenantId: tenant.id,
             title: 'Добро пожаловать на платформу',
-            body: 'В демонстрационной среде доступны учебные курсы и задания.',
+            excerpt: 'Учебные курсы и задания уже доступны.',
+            bodyMarkdown:
+              '# Добро пожаловать\n\nВ демонстрационной среде доступны **учебные курсы** и задания.',
             targetRole: seedCatalog.newsTargets.all,
+            status: NewsStatus.published,
+            publishedAt: daysFromNow(-4),
             createdBy: users.admin.id,
           },
           {
             tenantId: tenant.id,
             title: 'Студенческая конференция',
-            body: 'Регистрация докладов открыта до конца месяца.',
+            excerpt: 'Регистрация докладов открыта до конца месяца.',
+            bodyMarkdown:
+              '## Студенческая конференция\n\nРегистрация докладов открыта до конца месяца.',
             targetRole: seedCatalog.newsTargets.students,
+            status: NewsStatus.published,
+            publishedAt: daysFromNow(-3),
             createdBy: users.admin.id,
           },
           {
             tenantId: tenant.id,
             title: 'Методический семинар',
-            body: 'Семинар для преподавателей состоится в пятницу.',
+            excerpt: 'Семинар для преподавателей состоится в пятницу.',
+            bodyMarkdown:
+              '## Методический семинар\n\nСеминар для преподавателей состоится **в пятницу**.',
             targetRole: seedCatalog.newsTargets.teachers,
+            status: NewsStatus.published,
+            publishedAt: daysFromNow(-2),
             createdBy: users.admin.id,
           },
           {
             tenantId: tenant.id,
             title: 'Обновление регламента',
-            body: 'Администраторам доступна новая версия регламента.',
+            excerpt: 'Администраторам доступна новая версия регламента.',
+            bodyMarkdown:
+              '## Обновление регламента\n\nАдминистраторам доступна новая версия регламента.',
             targetRole: seedCatalog.newsTargets.admins,
+            status: NewsStatus.draft,
             createdBy: users.admin.id,
           },
         ],
@@ -561,6 +607,7 @@ async function getTableCounts(
     disciplines: await prisma.discipline.count(),
     discipline_teachers: await prisma.disciplineTeacher.count(),
     discipline_groups: await prisma.disciplineGroup.count(),
+    teaching_assignments: await prisma.teachingAssignment.count(),
     courses: await prisma.course.count(),
     course_blocks: await prisma.courseBlock.count(),
     materials: await prisma.material.count(),

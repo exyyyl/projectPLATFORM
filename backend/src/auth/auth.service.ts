@@ -67,6 +67,20 @@ export class AuthService {
   }
 
   async login(dto: LoginDto): Promise<AuthTokens> {
+    const user = await this.validateCredentials(dto);
+    return this.issueTokens(user);
+  }
+
+  async loginAdmin(dto: LoginDto): Promise<AuthTokens> {
+    const user = await this.validateCredentials(dto);
+    if (user.role !== UserRole.admin) {
+      throw new UnauthorizedException('Invalid credentials');
+    }
+
+    return this.issueTokens(user);
+  }
+
+  private async validateCredentials(dto: LoginDto): Promise<User> {
     const user = await this.prisma.user.findFirst({
       where: { email: dto.email, isActive: true },
     });
@@ -79,7 +93,7 @@ export class AuthService {
       throw new UnauthorizedException('Invalid credentials');
     }
 
-    return this.issueTokens(user);
+    return user;
   }
 
   async refreshTokens(refreshToken: string): Promise<AuthTokens> {

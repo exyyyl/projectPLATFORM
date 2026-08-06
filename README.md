@@ -142,7 +142,7 @@ docker compose up -d
 ### Backend API
 
 - Документация модулей: [backend/ARCHITECTURE.md](backend/ARCHITECTURE.md)
-- Префикс: `/v1/...` (через Nginx: `/api/v1/...`)
+- Префикс: `/api/...` (через Nginx: `/api/...`)
 - После обновления схемы: `cd backend && npx prisma migrate deploy`
 
 ## Post-MVP
@@ -154,7 +154,7 @@ docker compose up -d
 | `POSTGRES_USER` | `platform` | Пользователь PostgreSQL |
 | `POSTGRES_PASSWORD` | `platform` | Пароль PostgreSQL |
 | `POSTGRES_DB` | `platform` | Имя базы данных |
-| `JWT_SECRET` | — | Секрет для access-токенов (мин. 32 символа) |
+| `JWT_ACCESS_SECRET` | — | Секрет для access-токенов (мин. 32 символа) |
 | `JWT_REFRESH_SECRET` | — | Секрет для refresh-токенов (мин. 32 символа) |
 | `MINIO_ROOT_USER` | `minioadmin` | Логин MinIO |
 | `MINIO_ROOT_PASSWORD` | `minioadmin` | Пароль MinIO |

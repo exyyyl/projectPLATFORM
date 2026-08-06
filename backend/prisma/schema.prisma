@@ -53,6 +53,11 @@ enum NewsTargetRole {
   admin
 }
 
+enum NewsStatus {
+  draft
+  published
+}
+
 // --- Multi-tenant core ---
 
 model Tenant {
@@ -85,6 +90,7 @@ model User {
   tenant              Tenant               @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   userGroups          UserGroup[]
   disciplineTeachers  DisciplineTeacher[]
+  teachingAssignments TeachingAssignment[]
   taughtCourses       Course[]             @relation("CourseTeacher")
   submissions         Submission[]
   gradedSubmissions   Grade[]              @relation("GradeGrader")
@@ -122,10 +128,12 @@ model Group {
   courseYear Int?    @map("course_year")
   direction  String?
 
-  tenant            Tenant             @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  userGroups        UserGroup[]
-  disciplineGroups  DisciplineGroup[]
+  tenant              Tenant               @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  userGroups          UserGroup[]
+  disciplineGroups    DisciplineGroup[]
+  teachingAssignments TeachingAssignment[]
 
+  @@unique([tenantId, name])
   @@map("groups")
 }
 
@@ -146,11 +154,13 @@ model Discipline {
   name        String
   description String?
 
-  tenant             Tenant              @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  disciplineTeachers DisciplineTeacher[]
-  disciplineGroups   DisciplineGroup[]
-  courses            Course[]
+  tenant              Tenant               @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  disciplineTeachers  DisciplineTeacher[]
+  disciplineGroups    DisciplineGroup[]
+  teachingAssignments TeachingAssignment[]
+  courses             Course[]
 
+  @@unique([tenantId, name])
   @@map("disciplines")
 }
 
@@ -176,6 +186,23 @@ model DisciplineGroup {
   @@map("discipline_groups")
 }
 
+model TeachingAssignment {
+  id           Int      @id @default(autoincrement())
+  disciplineId Int      @map("discipline_id")
+  teacherId    Int      @map("teacher_id")
+  groupId      Int      @map("group_id")
+  createdAt    DateTime @default(now()) @map("created_at")
+
+  discipline Discipline @relation(fields: [disciplineId], references: [id], onDelete: Cascade)
+  teacher    User       @relation(fields: [teacherId], references: [id], onDelete: Cascade)
+  group      Group      @relation(fields: [groupId], references: [id], onDelete: Cascade)
+
+  @@unique([disciplineId, teacherId, groupId])
+  @@index([teacherId])
+  @@index([groupId])
+  @@map("teaching_assignments")
+}
+
 // --- Учебный контент ---
 
 model Course {
@@ -183,8 +210,8 @@ model Course {
   disciplineId Int @map("discipline_id")
   teacherId    Int @map("teacher_id")
 
-  discipline  Discipline   @relation(fields: [disciplineId], references: [id], onDelete: Cascade)
-  teacher     User         @relation("CourseTeacher", fields: [teacherId], references: [id], onDelete: Restrict)
+  discipline  Discipline     @relation(fields: [disciplineId], references: [id], onDelete: Cascade)
+  teacher     User           @relation("CourseTeacher", fields: [teacherId], references: [id], onDelete: Restrict)
   blocks      CourseBlock[]
   materials   Material[]
   assignments Assignment[]
@@ -194,11 +221,11 @@ model Course {
 }
 
 model CourseBlock {
-  id         Int  @id @default(autoincrement())
-  courseId   Int  @map("course_id")
+  id         Int    @id @default(autoincrement())
+  courseId   Int    @map("course_id")
   title      String
-  orderIndex Int  @map("order_index")
-  content    Json @default("{}")
+  orderIndex Int    @map("order_index")
+  content    Json   @default("{}")
 
   course    Course     @relation(fields: [courseId], references: [id], onDelete: Cascade)
   materials Material[]
@@ -225,18 +252,18 @@ model Material {
 }
 
 model Assignment {
-  id                 Int              @id @default(autoincrement())
-  courseId           Int              @map("course_id")
-  title              String
-  description        String           @default("")
-  gradingType        GradingType      @map("grading_type")
-  maxScore           Int?             @map("max_score")
-  deadline           DateTime?
-  status             AssignmentStatus @default(draft)
-  allowedExtensions  String[]         @default([]) @map("allowed_extensions")
-  createdBy          Int              @map("created_by")
-  createdAt          DateTime         @default(now()) @map("created_at")
-  updatedAt          DateTime         @updatedAt @map("updated_at")
+  id                Int              @id @default(autoincrement())
+  courseId          Int              @map("course_id")
+  title             String
+  description       String           @default("")
+  gradingType       GradingType      @map("grading_type")
+  maxScore          Int?             @map("max_score")
+  deadline          DateTime?
+  status            AssignmentStatus @default(draft)
+  allowedExtensions String[]         @default([]) @map("allowed_extensions")
+  createdBy         Int              @map("created_by")
+  createdAt         DateTime         @default(now()) @map("created_at")
+  updatedAt         DateTime         @updatedAt @map("updated_at")
 
   course       Course        @relation(fields: [courseId], references: [id], onDelete: Cascade)
   submissions  Submission[]
@@ -321,17 +348,22 @@ model Notification {
 }
 
 model News {
-  id         Int             @id @default(autoincrement())
-  tenantId   Int             @map("tenant_id")
-  title      String
-  body       String
-  targetRole NewsTargetRole? @map("target_role")
-  createdBy  Int             @map("created_by")
-  createdAt  DateTime        @default(now()) @map("created_at")
+  id           Int            @id @default(autoincrement())
+  tenantId     Int            @map("tenant_id")
+  title        String
+  excerpt      String?
+  bodyMarkdown String         @map("body")
+  targetRole   NewsTargetRole @default(all) @map("target_role")
+  status       NewsStatus     @default(draft)
+  publishedAt  DateTime?      @map("published_at")
+  createdBy    Int            @map("created_by")
+  createdAt    DateTime       @default(now()) @map("created_at")
+  updatedAt    DateTime       @updatedAt @map("updated_at")
 
   tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   author User   @relation("NewsAuthor", fields: [createdBy], references: [id], onDelete: Restrict)
 
+  @@index([tenantId, status, publishedAt])
   @@map("news")
 }
 
@@ -360,4 +392,3 @@ model AuditLog {
   @@index([entity, entityId])
   @@map("audit_logs")
 }
-

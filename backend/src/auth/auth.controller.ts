@@ -62,6 +62,28 @@ export class AuthController {
     return { accessToken: tokens.accessToken };
   }
 
+  @UseGuards(GuestOnlyGuard)
+  @Post('admin/login')
+  @ApiOperation({ summary: 'Login to the admin dashboard' })
+  @ApiCreatedResponse({
+    description:
+      'Admin authenticated; refresh token is set in an HttpOnly cookie',
+    schema: { example: { accessToken: '<jwt>' } },
+  })
+  @ApiBadRequestResponse({ description: 'Invalid request body' })
+  @ApiUnauthorizedResponse({
+    description: 'Invalid credentials or the account is not an admin',
+  })
+  @ApiForbiddenResponse({ description: 'User already has an active session' })
+  async loginAdmin(
+    @Body() dto: LoginDto,
+    @Res({ passthrough: true }) res: Response,
+  ) {
+    const tokens = await this.auth.loginAdmin(dto);
+    this.setRefreshCookie(res, tokens.refreshToken);
+    return { accessToken: tokens.accessToken };
+  }
+
   @Post('refresh')
   @ApiOperation({ summary: 'Rotate refresh token and issue a new token pair' })
   @ApiCookieAuth()

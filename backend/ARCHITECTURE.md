@@ -6,7 +6,7 @@
 ## Поток запроса
 
 ```
-Браузер → Nginx (/api/...) → NestJS (префикс v1)
+Браузер → Nginx (/api/...) → NestJS (префикс api)
   → JwtAuthGuard (JWT access-token)
   → RolesGuard (student | teacher | admin)
   → Controller
@@ -17,8 +17,8 @@
   ← JSON
 ```
 
-- **Локально** (порт 3000): `http://localhost:3000/v1/...`
-- **Через Nginx**: `http://localhost/api/v1/...` (префикс `/api` снимается прокси)
+- **Локально** (порт 3000): `http://localhost:3000/api/...`
+- **Через Nginx**: `http://localhost/api/...` (путь передаётся без изменения)
 
 Служебный эндпоинт без версии: `GET /health`.
 
@@ -44,11 +44,11 @@ backend/
 
 | Модуль | Сервис | HTTP (префикс `v1`) | Ответственность |
 |--------|--------|---------------------|-----------------|
-| **auth** | `AuthService` | `POST /auth/login`, `/refresh`, `/logout` | Вход по email/паролю, bcrypt (≥12 rounds), JWT access (15 мин) + refresh (7 дней, httpOnly cookie), инвалидация refresh при logout |
+| **auth** | `AuthService` | `POST /auth/login`, `/auth/admin/login`, `/refresh`, `/logout` | Общая проверка email/пароля; admin-вход проверяет роль до выдачи токенов; JWT access + refresh в httpOnly cookie |
 | **users** | `UsersService` | `GET/PUT /users/me` | Профиль текущего пользователя, смена пароля |
-| **admin** | делегирует в Users/Groups/Disciplines | `GET/POST/PUT/DELETE /admin/users`, `/groups`, `/disciplines`; `POST /admin/users/import` | CRUD пользователей, импорт CSV/Excel, группы, дисциплины, привязки преподавателей и групп. Только `admin` |
+| **admin** | делегирует в Users/Groups/Disciplines/News | `GET/POST/PUT/DELETE /admin/users`, `/groups`, `/disciplines`, `/news` | CRUD пользователей, групп, дисциплин и новостей. Только `admin` |
 | **groups** | `GroupsService` | (через admin API) | Группы студентов, `user_groups` |
-| **disciplines** | `DisciplinesService` | (через admin API) | Справочник дисциплин, `discipline_teachers`, `discipline_groups` |
+| **disciplines** | `DisciplinesService` | (через admin API) | Справочник дисциплин, `discipline_teachers`, `discipline_groups`, конкретные тройки `teaching_assignments` |
 | **courses** | `CoursesService` | `GET /courses`, `GET/POST/PUT/DELETE /courses/:id/blocks` | Курс = дисциплина + преподаватель (+ группа). Блоки контента (JSON), скрытие курса (`hidden_courses`) |
 | **assignments** | `AssignmentsService` | `GET/POST/PUT/DELETE /assignments` | Задания: `grading_type`, дедлайн, статус draft/published/closed |
 | **submissions** | `SubmissionsService` | `POST /assignments/:id/submissions`, `GET .../submissions` | Сдача работ (multipart), попытки, `student_comment`, файлы → MinIO |
@@ -57,7 +57,7 @@ backend/
 | **notifications** | `NotificationsService` | `GET/PATCH /notifications` | In-app уведомления, отметка прочитанными |
 | **files** | `FilesService` | `GET /files/:token` | MIME + magic bytes, загрузка в MinIO, presigned URL (TTL ~5 мин), без web-root |
 | **materials** | `MaterialsService` | `GET/POST /materials` | Учебные материалы (файл или ссылка), связь с курсом/блоком |
-| **news** | `NewsService` | `GET/POST /news` | Объявления администратора (`target_role` опционально) |
+| **news** | `NewsService` | `GET /news`, admin CRUD и publish/unpublish | Markdown-новости, черновики, публикация, фильтрация по tenant и роли |
 | **health** | — | `GET /health` | Проверка живости API |
 
 ### Cross-cutting (`src/common`)
@@ -79,6 +79,7 @@ tenants → users
             ├─ [student] → user_groups → groups
             └─ [teacher] → discipline_teachers → disciplines
                                               → discipline_groups → groups
+                                              → teaching_assignments ← teacher + group
                                               → courses
                                                     → course_blocks, materials
                                                     → assignments
@@ -90,7 +91,21 @@ users + courses → hidden_courses
 audit_logs (сквозной аудит)
 ```
 
-**Важно (из ТЗ):** `disciplines` — справочник предмета; `courses` — конкретное ведение (предмет + преподаватель + группа). Материалы и задания всегда на уровне **course**, не discipline.
+**Важно (из ТЗ):** `disciplines` — справочник предмета;
+`teaching_assignments` фиксирует административную тройку
+«дисциплина + преподаватель + группа» только после создания обеих парных связей
+с дисциплиной. Текущая модель `courses` пока хранит
+дисциплину и преподавателя; привязка курса к тройному назначению будет выполнена
+в вертикальном срезе учебной структуры. Материалы и задания всегда находятся на
+уровне **course**, а не discipline.
+
+Планируемый role-scoped read API строится на `teaching_assignments`:
+
+- студент → его `user_groups` → назначения групп → дисциплины и преподаватели;
+- преподаватель → назначения по `teacher_id` → дисциплины и группы;
+- администратор → все назначения текущего `tenantId`;
+- доступ к курсам → совпадение дисциплины и преподавателя курса с разрешённым
+  назначением пользователя/группы.
 
 Схема: `prisma/schema.prisma`.
 
@@ -136,6 +151,6 @@ npx prisma migrate dev --name edu_platform_domain
 npm run start:dev
 ```
 
-Проверка: `GET http://localhost:3000/health`, `GET http://localhost:3000/v1/auth/login` (заглушка).
+Проверка: `GET http://localhost:3000/health`, `GET http://localhost:3000/api/auth/login` (заглушка).
 
 Пакеты для спринта 1.4–1.5 (ещё не установлены): `@nestjs/jwt`, `@nestjs/passport`, `passport-jwt`, `bcrypt`, `class-validator`, `class-transformer`, `@nestjs/swagger`, `minio`, `file-type`, `isomorphic-dompurify`.
