@@ -42,7 +42,7 @@ const resourceTypeMeta: Record<
 
 function PresentationView() {
   return (
-    <div className="grid gap-4 md:grid-cols-3">
+    <div className="grid gap-4 @3xl:grid-cols-3">
       {["Тема занятия", "Ключевые понятия", "Вопросы для семинара"].map(
         (title, index) => (
           <div key={title} className="rounded-xl border bg-card p-4">
@@ -117,7 +117,7 @@ function TestView() {
   };
 
   return (
-    <div className="grid gap-6 lg:grid-cols-[1fr_20rem]">
+    <div className="grid gap-6 @5xl:grid-cols-[1fr_20rem]">
       <div className="space-y-4">
         <div className="rounded-xl border bg-card p-5">
           <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
@@ -305,7 +305,7 @@ export default function CourseResourcePage() {
 
   if (!course || !resource) {
     return (
-      <section className="space-y-4" aria-labelledby="resource-not-found-title">
+      <section className="space-y-6" aria-labelledby="resource-not-found-title">
         <Button asChild variant="outline">
           <Link to={courseId ? `/courses/${courseId}` : "/courses"}>
             <ArrowLeft />

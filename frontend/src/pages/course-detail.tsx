@@ -79,7 +79,7 @@ export default function CourseDetailPage() {
 
   if (!course) {
     return (
-      <section className="space-y-4" aria-labelledby="course-not-found-title">
+      <section className="space-y-6" aria-labelledby="course-not-found-title">
         <Button asChild variant="outline">
           <Link to="/courses">
             <ArrowLeft />
@@ -107,7 +107,7 @@ export default function CourseDetailPage() {
         </Link>
       </Button>
 
-      <div className="grid gap-6 lg:grid-cols-3">
+      <div className="grid gap-6 @5xl:grid-cols-3">
         <Card className="lg:col-span-2">
           <CardHeader>
             <CardTitle id="course-title" className="text-2xl">

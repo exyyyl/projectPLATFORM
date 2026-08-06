@@ -1,6 +1,12 @@
 import { expect, test } from '@playwright/test'
 
+import { mockAuthenticatedSession } from './fixtures/auth'
+
 test.describe('Navigation', () => {
+  test.beforeEach(async ({ page }) => {
+    await mockAuthenticatedSession(page)
+  })
+
   test('loads the dashboard page', async ({ page }) => {
     await page.goto('/')
 

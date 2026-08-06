@@ -8,12 +8,14 @@ import {
   Presentation,
   University,
 } from "lucide-react";
-import { Link, Navigate } from "react-router-dom";
+import { Link } from "react-router-dom";
 
-import { Avatar, AvatarFallback } from "@/components/ui/avatar";
+import { AvatarPicker } from "@/components/profile/avatar-picker";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { hasProfileAccess } from "@/lib/auth";
+import { UserAvatar } from "@/components/ui/user-avatar";
+import { useAuth } from "@/hooks/use-auth";
+import { useAvatar } from "@/hooks/use-avatar";
 
 const studentInfo = [
   { label: "Вуз", value: "МГУ" },
@@ -53,33 +55,42 @@ const interactions = [
   },
 ];
 
-const informationItems = [
-  { icon: Mail, label: "Почта", value: "a.viktorova@edu.example" },
-  { icon: MapPin, label: "Кампус", value: "Ленинские горы" },
-  { icon: University, label: "Корпус", value: "Шуваловский" },
-  { icon: BookOpen, label: "Активность", value: "5 дисциплин" },
-];
+const roleLabels = {
+  student: "Студент",
+  teacher: "Преподаватель",
+  admin: "Администратор",
+} as const;
 
 export default function ProfilePage() {
-  if (!hasProfileAccess()) {
-    return <Navigate to="/login" replace />;
-  }
+  const { user } = useAuth();
+  const { config: avatarConfig } = useAvatar();
+
+  const informationItems = [
+    { icon: Mail, label: "Почта", value: user?.email ?? "—" },
+    { icon: MapPin, label: "Кампус", value: "Ленинские горы" },
+    { icon: University, label: "Корпус", value: "Шуваловский" },
+    { icon: BookOpen, label: "Активность", value: "5 дисциплин" },
+  ];
 
   return (
     <section className="space-y-6" aria-labelledby="profile-title">
       <div className="rounded-xl border bg-card p-5">
         <div className="flex flex-col gap-5 sm:flex-row sm:items-center sm:justify-between">
           <div className="flex items-center gap-4">
-            <Avatar size="lg" className="size-16">
-              <AvatarFallback className="text-lg font-semibold">АВ</AvatarFallback>
-            </Avatar>
+            <UserAvatar
+              name={user?.fullName}
+              config={avatarConfig}
+              className="size-16"
+            />
             <div>
               <div className="flex flex-wrap gap-2">
-                <Badge variant="secondary">Студент</Badge>
+                <Badge variant="secondary">
+                  {user ? roleLabels[user.role] : "—"}
+                </Badge>
                 <Badge variant="outline">3 курс</Badge>
               </div>
               <h1 id="profile-title" className="mt-2 text-2xl font-semibold">
-                Анна Викторова
+                {user?.fullName}
               </h1>
               <p className="mt-1 text-sm text-muted-foreground">
                 Юридический факультет · группа ЮР-231
@@ -94,7 +105,9 @@ export default function ProfilePage() {
         </div>
       </div>
 
-      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+      <AvatarPicker />
+
+      <div className="grid gap-3 @xl:grid-cols-2 @4xl:grid-cols-4">
         {studentInfo.map((item) => (
           <div key={item.label} className="rounded-xl border bg-card p-4">
             <div className="text-xs text-muted-foreground">{item.label}</div>
@@ -103,7 +116,7 @@ export default function ProfilePage() {
         ))}
       </div>
 
-      <div className="grid gap-6 lg:grid-cols-[1fr_20rem]">
+      <div className="grid gap-6 @5xl:grid-cols-[1fr_20rem]">
         <section
           className="rounded-xl border bg-card"
           aria-labelledby="interaction-history-title"

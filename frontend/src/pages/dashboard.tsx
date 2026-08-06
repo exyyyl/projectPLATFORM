@@ -13,8 +13,8 @@ import {
 
 export function DashboardPage() {
   return (
-    <section aria-label="Демонстрация компонентов">
-      <div className="grid gap-6 md:grid-cols-2">
+    <section className="space-y-6" aria-label="Демонстрация компонентов">
+      <div className="grid gap-6 @4xl:grid-cols-2">
         <ErrorBoundary>
           <Card>
             <CardHeader>

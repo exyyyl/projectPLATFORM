@@ -4,6 +4,7 @@
   "scripts": {
     "setup": "npm install && npm install --prefix backend && npm install --prefix frontend",
     "dev": "concurrently -n db,back,front -c blue,green,magenta \"npm run docker:up\" \"npm run dev:backend\" \"npm run dev:frontend\"",
+    "dev:tabs": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/dev-tabs.ps1",
     "dev:backend": "npm run dev:watch --prefix backend",
     "dev:frontend": "npm run dev --prefix frontend",
     "build": "npm run build:backend && npm run build:frontend",
@@ -15,7 +16,7 @@
     "test": "npm run test:backend && npm run test:frontend",
     "test:backend": "npm run test --prefix backend",
     "test:frontend": "npm run test --prefix frontend",
-    "docker:up": "docker compose up -d postgres minio minio-init",
+    "docker:up": "docker compose up -d --wait postgres minio minio-init",
     "docker:down": "docker compose down",
     "docker:all": "docker compose up -d",
     "db:migrate": "npm run prisma:migrate --prefix backend",

@@ -1,6 +1,12 @@
 import { expect, test } from '@playwright/test'
 
+import { mockAuthenticatedSession } from './fixtures/auth'
+
 test.describe('Theme Toggle', () => {
+  test.beforeEach(async ({ page }) => {
+    await mockAuthenticatedSession(page)
+  })
+
   test('switches between light and dark modes', async ({ page }) => {
     await page.goto('/')
 

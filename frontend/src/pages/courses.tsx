@@ -13,7 +13,7 @@ import { cn } from "@/lib/utils";
 
 export default function CoursePage() {
   return (
-    <section className="space-y-5" aria-label="Курсы">
+    <section className="space-y-6" aria-label="Курсы">
       <div className="flex justify-end">
         <div className="relative w-full sm:w-80">
           <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
@@ -25,7 +25,7 @@ export default function CoursePage() {
         </div>
       </div>
 
-      <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
+      <div className="grid gap-6 @2xl:grid-cols-2 @4xl:grid-cols-3 @7xl:grid-cols-4">
         {courses.map((course) => (
           <Link
             key={course.id}

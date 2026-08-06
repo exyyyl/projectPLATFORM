@@ -14,11 +14,11 @@ export default function NewsPage() {
   );
 
   return (
-    <main className="mx-auto max-w-6xl space-y-8">
+    <section className="space-y-6" aria-label="Новости">
       {systemNews.length > 0 && (
         <section className="space-y-4">
           <h2 className="text-lg font-semibold">Системные уведомления</h2>
-          <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+          <div className="grid gap-3 @2xl:grid-cols-2 @4xl:grid-cols-3 @7xl:grid-cols-4">
             {systemNews.map((news) => (
               <NewsCard key={news.id} news={news} />
             ))}
@@ -46,6 +46,6 @@ export default function NewsPage() {
           </TabsContent>
         </Tabs>
       </section>
-    </main>
+    </section>
   );
 }

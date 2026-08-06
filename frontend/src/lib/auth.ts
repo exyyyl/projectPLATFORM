@@ -1,13 +1,18 @@
-const AUTH_STORAGE_KEY = "projectplatform-authenticated";
+/**
+ * Access-токен живёт только в памяти модуля: после перезагрузки страницы он
+ * теряется и восстанавливается силентным refresh'ем по HttpOnly-куке.
+ * Так его не достать через XSS, в отличие от localStorage.
+ */
+let accessToken: string | null = null;
 
-export function grantProfileAccess() {
-  window.localStorage.setItem(AUTH_STORAGE_KEY, "true");
+export function setAccessToken(token: string) {
+  accessToken = token;
 }
 
-export function revokeProfileAccess() {
-  window.localStorage.removeItem(AUTH_STORAGE_KEY);
+export function getAccessToken() {
+  return accessToken;
 }
 
-export function hasProfileAccess() {
-  return window.localStorage.getItem(AUTH_STORAGE_KEY) === "true";
+export function clearAccessToken() {
+  accessToken = null;
 }

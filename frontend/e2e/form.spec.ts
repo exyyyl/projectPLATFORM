@@ -1,7 +1,10 @@
 import { expect, test } from '@playwright/test'
 
+import { mockAuthenticatedSession } from './fixtures/auth'
+
 test.describe('Sample Form', () => {
   test.beforeEach(async ({ page }) => {
+    await mockAuthenticatedSession(page)
     await page.goto('/')
   })
 
