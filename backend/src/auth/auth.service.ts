@@ -73,7 +73,7 @@ export class AuthService {
 
   async loginAdmin(dto: LoginDto): Promise<AuthTokens> {
     const user = await this.validateCredentials(dto);
-    if (user.role !== UserRole.admin) {
+    if (user.role !== UserRole.admin && user.role !== UserRole.superadmin) {
       throw new UnauthorizedException('Invalid credentials');
     }
 
@@ -121,10 +121,14 @@ export class AuthService {
         throw new UnauthorizedException();
       }
 
-      const user = await this.prisma.user.findUnique({
-        where: { id: payload.sub },
+      const user = await this.prisma.user.findFirst({
+        where: {
+          id: payload.sub,
+          isActive: true,
+          tenant: { isActive: true },
+        },
       });
-      if (!user || !user.isActive) {
+      if (!user) {
         throw new UnauthorizedException();
       }
 
@@ -162,7 +166,7 @@ export class AuthService {
           userId: payload.sub,
           tokenHash: this.hashRefreshToken(refreshToken),
           expiresAt: { gt: new Date() },
-          user: { isActive: true },
+          user: { isActive: true, tenant: { isActive: true } },
         },
       });
 

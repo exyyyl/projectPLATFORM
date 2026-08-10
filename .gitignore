@@ -45,3 +45,6 @@ frontend/test-results/
 
 # Local archives
 /backend.zip
+
+# Private local project notes (never commit)
+/backend/LOCAL_SECURITY_GUIDE.md

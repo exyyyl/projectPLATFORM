@@ -10,8 +10,7 @@ import { JwtPayload } from '../decorators/current-user.decorator';
 import { ROLES_KEY } from '../decorators/roles.decorator';
 
 /**
- * RBAC: student | teacher | admin.
- * TODO (спринт 1.5): подключить глобально после JwtAuthGuard.
+ * RBAC: student | teacher | admin. Superadmin bypasses tenant role checks.
  */
 @Injectable()
 export class RolesGuard implements CanActivate {
@@ -27,7 +26,10 @@ export class RolesGuard implements CanActivate {
     }
 
     const { user } = context.switchToHttp().getRequest<{ user?: JwtPayload }>();
-    if (!user || !requiredRoles.includes(user.role)) {
+    if (
+      !user ||
+      (user.role !== UserRole.superadmin && !requiredRoles.includes(user.role))
+    ) {
       throw new ForbiddenException('Insufficient permissions');
     }
     return true;

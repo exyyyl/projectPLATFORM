@@ -14,7 +14,8 @@
 
 Поддомен выбирает frontend-приложение, а путь API и guards определяют права.
 NestJS не должен доверять одному только имени `dashboard`: каждый контроллер
-`/api/admin/**` дополнительно защищён `@Roles(UserRole.admin)`.
+`/api/admin/**` дополнительно защищён `@Roles(UserRole.admin)`; роль
+`superadmin` проходит эту проверку глобально.
 
 `*.localhost` поддерживается современными браузерами как loopback-адрес. Порты
 тоже допустимы (`app.localhost:5173`, `dashboard.localhost:5174`), однако удобнее

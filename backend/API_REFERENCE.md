@@ -8,6 +8,14 @@
 - Swagger UI: `http://localhost:3000/docs`
 - OpenAPI JSON: `http://localhost:3000/docs-json`
 
+Быстрый полный список всех controller routes и их готовность:
+`API_ROUTE_MATRIX.md`.
+
+Для каждого готового контракта фиксируются: HTTP method и URL, авторизация и
+роли, tenant/ownership-ограничение, path/query/body, успешный HTTP status и
+тело, ошибки, побочные эффекты, правила дат и идемпотентность. Заглушки имеют
+только пометку TODO и не являются контрактом для frontend.
+
 ## Общие правила
 
 | Параметр           | Значение                              |
@@ -118,7 +126,7 @@ Refresh token возвращается только в HttpOnly cookie.
 ### POST `/api/auth/admin/login`
 
 Отдельная точка входа для dashboard. Тело и успешный ответ совпадают с обычным
-login, но токены выдаются только активному пользователю с ролью `admin`:
+login, но токены выдаются только активному `admin` или `superadmin`:
 
 ```json
 {
@@ -134,7 +142,7 @@ login, но токены выдаются только активному пол
 
 | Статус | Когда                                                    |
 | -----: | -------------------------------------------------------- |
-|  `201` | credentials верны и роль пользователя — `admin`          |
+|  `201` | credentials верны и роль — `admin` или `superadmin`      |
 |  `400` | тело не прошло DTO-валидацию                              |
 |  `401` | неверные credentials, неактивный аккаунт или роль не admin |
 |  `403` | в cookie/header уже существует активная сессия            |
@@ -671,6 +679,555 @@ refresh-сессии. Текущий администратор не может 
 |  `409` | дубликат имени/тройки либо удаляемая дисциплина имеет курсы   |
 |  `429` | превышен rate limit                                          |
 
+## Role-scoped учебный обзор
+
+### GET `/api/academic/overview`
+
+Требует access token. Формат определяется ролью текущего пользователя:
+
+- `student` — группы, назначенные дисциплины, преподаватели и опубликованные курсы;
+- `teacher` — дисциплины, группы, `teachingAssignmentId` и созданные курсы;
+- `admin` — количество пользователей, групп, дисциплин, назначений и курсов tenant;
+- `superadmin` — список всех tenant с агрегированными счётчиками.
+
+Пример части ответа преподавателя:
+
+```json
+{
+  "role": "teacher",
+  "disciplines": [
+    {
+      "id": 1,
+      "name": "Математика",
+      "groups": [
+        {
+          "teachingAssignmentId": 7,
+          "id": 12,
+          "name": "ИП1-1-22",
+          "courses": []
+        }
+      ]
+    }
+  ]
+}
+```
+
+## Шаблоны и запуски курса
+
+Шаблон — редактируемая заготовка преподавателя. Запуск (`Course`) — независимый
+снимок на учебный год. Изменение шаблона не меняет уже созданный запуск.
+
+Все routes шаблонов требуют access JWT. Допуск: владелец с ролью `teacher`,
+`admin` того же tenant и `superadmin`. Студент получает `403` на весь раздел.
+
+### GET `/api/course-templates`
+
+Тело отсутствует. Возвращает `200 OK` со списком доступных шаблонов,
+дисциплиной, владельцем и `_count.blocks`, `_count.assignments`, `_count.runs`.
+
+### POST `/api/course-templates`
+
+Создаёт активный шаблон версии `1`. Преподаватель не передаёт `ownerId`;
+admin/superadmin указывает преподавателя, предварительно назначенного дисциплине.
+
+```json
+{
+  "disciplineId": 1,
+  "ownerId": 2,
+  "title": "Основы алгоритмизации",
+  "description": "Шаблон для ежегодного запуска"
+}
+```
+
+Успех — `201 Created`: шаблон с `blocks`, `assignments` и `runs`.
+
+### GET `/api/course-templates/:id`
+
+Возвращает `200 OK`: метаданные, текущую `version`, `isActive`, отсортированные
+блоки, задания шаблона и краткий список созданных запусков.
+
+### PUT `/api/course-templates/:id`
+
+Принимает хотя бы одно поле `title` или `description`. Успех — `200 OK`.
+Каждое изменение увеличивает `version`; старые запуски сохраняют записанный
+`templateVersion`.
+
+### DELETE `/api/course-templates/:id`
+
+Не удаляет историю физически. Выставляет `isActive=false`, увеличивает version и
+возвращает `200 OK`. Существующие запуски продолжают читаться, но создавать из
+неактивного шаблона новые нельзя (`409`).
+
+### Блоки шаблона
+
+Routes:
+
+- `GET /api/course-templates/:id/blocks` → `200`, отсортированный массив;
+- `POST /api/course-templates/:id/blocks` → `201`, созданный блок;
+- `PUT /api/course-templates/:id/blocks/:blockId` → `200`, обновлённый блок;
+- `DELETE /api/course-templates/:id/blocks/:blockId` → `200`, удалённый блок.
+
+Создание:
+
+```json
+{
+  "title": "Модуль 1. Основы",
+  "orderIndex": 1,
+  "content": { "kind": "rich-text", "text": "Введение" }
+}
+```
+
+`title` — 2–200 символов, `orderIndex` — целое от `0`, `content` — JSON object.
+PUT принимает любое непустое подмножество этих полей. Удаление блока оставляет
+задания шаблона, но сбрасывает у них `blockId` в `null`.
+
+### Задания шаблона
+
+Routes:
+
+- `GET /api/course-templates/:id/assignments` → `200`, массив;
+- `POST /api/course-templates/:id/assignments` → `201`, созданное задание;
+- `PUT /api/course-templates/:id/assignments/:assignmentId` → `200`;
+- `DELETE /api/course-templates/:id/assignments/:assignmentId` → `200`.
+
+```json
+{
+  "blockId": 10,
+  "title": "Практика по алгоритмам",
+  "description": "Решите задачи и приложите архив",
+  "gradingType": "scored",
+  "maxScore": 100,
+  "deadlineOffsetDays": 14,
+  "allowedExtensions": ["pdf"],
+  "maxAttempts": 5,
+  "maxFiles": 1,
+  "maxFileSizeBytes": 5242880,
+  "maxTotalSizeBytes": 5242880,
+  "allowLateSubmissions": false
+}
+```
+
+- `gradingType`: `scored` требует `maxScore`; `pass_fail` запрещает его;
+- `deadlineOffsetDays`: `0..3660`, считается от `startsAt` будущего запуска;
+- расширения: максимум 20, без точки, `a-z`, цифры, длина до 10; backend
+  приводит их к lower-case, удаляет ведущую точку и дубликаты;
+- лимиты и разрешение поздней сдачи копируются в каждый новый запуск курса;
+- MinIO upload проверяет размер, MIME и magic bytes; исполняемые расширения
+  запрещены глобально.
+
+### POST `/api/course-templates/:id/runs`
+
+Создаёт новый `Course` в `draft` и копирует блоки и задания отдельными строками.
+
+```json
+{
+  "academicYear": "2026/2027",
+  "semester": 1,
+  "startsAt": "2026-09-01T09:00:00.000Z",
+  "endsAt": "2027-01-20T09:00:00.000Z",
+  "teachingAssignmentIds": [7, 8]
+}
+```
+
+Необязательные поля: `teacherId` для admin/superadmin и собственный `title`.
+Год обязан содержать последовательные годы; semester `1..3`; `endsAt` позже
+`startsAt`. Если есть относительный дедлайн, `startsAt` обязателен.
+
+Каждый `teachingAssignmentId` должен иметь ту же дисциплину и преподавателя.
+Успех — `201 Created`: запуск с template, teacher, discipline, blocks,
+assignments и courseGroups. Повтор той же комбинации
+template/teacher/year/semester даёт `409`.
+
+Материалы шаблона пока не копируются: их metadata и MinIO-файлы будут добавлены
+следующим этапом. Материалы существующего запуска продолжают работать через
+routes курса ниже.
+
+Общие исходы шаблонов:
+
+| Статус | Когда |
+| -----: | --- |
+| `400` | DTO, год, диапазон дат, JSON блока или grading-настройки некорректны |
+| `401` | access JWT отсутствует/некорректен или аккаунт неактивен |
+| `403` | роль, tenant или ownership не разрешают действие |
+| `404` | шаблон, блок, задание, дисциплина не найдены |
+| `409` | шаблон неактивен, teacher не назначен, группы не совпадают или run уже есть |
+| `429` | превышен глобальный rate limit |
+
+## Курсы и выпуск материалов
+
+### GET `/api/courses`
+
+Возвращает студенту только опубликованные курсы его групп, преподавателю — его
+курсы, администратору — курсы tenant, суперадмину — все курсы. Элемент содержит
+`academicYear`, `semester`, `startsAt`, `endsAt`, `archivedAt`, `templateVersion`
+и краткий `template`, если запуск создан из шаблона.
+
+### POST `/api/courses`
+
+Роли: `teacher`, `admin`, `superadmin`. Создаёт legacy/manual `draft` без
+шаблона и учебного года:
+
+```json
+{
+  "disciplineId": 1,
+  "teacherId": 2,
+  "title": "Математика, осенний семестр",
+  "description": "Подготовленный заранее курс"
+}
+```
+
+Преподаватель не передаёт `teacherId`: backend использует ID из токена.
+Администратор обязан передать активного преподавателя, уже назначенного этой
+дисциплине.
+
+Для ежегодного рабочего процесса frontend должен предпочитать
+`POST /api/course-templates/:id/runs`.
+
+### GET `/api/courses/:id`
+
+Преподаватель и администратор получают все группы, задания, блоки, материалы и
+настройки выпусков. Студент получает только свои группы и материалы, которые
+уже опубликованы либо достигли своей даты выпуска.
+
+### PUT `/api/courses/:id`
+
+Изменяет `title` и/или `description`. Только владелец-преподаватель,
+администратор tenant или суперадмин.
+
+### POST `/api/courses/:id/publish`
+
+Публикует курс — `200 OK`. После этого курс появляется у студентов подключённых
+групп, но каждый материал всё равно проверяет собственную дату выпуска.
+
+### POST `/api/courses/:id/unpublish`
+
+Возвращает курс в черновики — `200 OK`.
+
+### POST `/api/courses/:id/archive`
+
+Переводит запуск в `archived`, устанавливает `archivedAt` и возвращает
+`200 OK`. Архив остаётся доступен владельцу, admin и superadmin для истории, но
+его metadata, группы, блоки, материалы и задания больше нельзя изменять. Для
+студента архивный запуск не входит в список активных курсов.
+
+### Блоки запуска
+
+- `GET /api/courses/:id/blocks` — роли с доступом к запуску, `200`, массив;
+- `POST /api/courses/:id/blocks` — owner-teacher/admin/superadmin, `201`;
+- `PUT /api/courses/:id/blocks/:blockId` — owner-teacher/admin/superadmin,
+  `200`;
+- `DELETE /api/courses/:id/blocks/:blockId` — owner-teacher/admin/superadmin,
+  `200`.
+
+DTO создания и обновления совпадает с блоками шаблона. Удаление блока не удаляет
+материалы и задания: их `blockId` становится `null`. Любое изменение архива
+возвращает `409`.
+
+### POST `/api/courses/:id/groups`
+
+Подключает группы через существующие тройные назначения:
+
+```json
+{
+  "teachingAssignmentIds": [7, 8]
+}
+```
+
+Каждое назначение обязано совпадать с преподавателем и дисциплиной курса.
+Для уже созданных материалов автоматически формируются групповые выпуски.
+
+### DELETE `/api/courses/:id/groups/:courseGroupId`
+
+Отключает группу от курса вместе с её настройками выпусков материалов.
+
+### GET `/api/courses/:id/groups/:courseGroupId/progress`
+
+Роли: владелец-преподаватель, admin, superadmin. Для каждого активного студента
+возвращает `submittedAssignments`, `gradedAssignments`, `passedAssignments`,
+`pendingReview` и `progressPercent`.
+
+### POST `/api/courses/:id/materials`
+
+Создаёт материал и сохраняет `createdAt`, `updatedAt` и общую дату:
+
+```json
+{
+  "title": "Лекция 1",
+  "type": "link",
+  "url": "https://example.com/lecture-1",
+  "defaultAvailableAt": "2026-10-07T09:00:00.000Z"
+}
+```
+
+Для `type=link` обязателен `url`; для `type=file` обязателен внутренний
+`filePath`, который в будущем будет возвращать модуль загрузки MinIO.
+
+### PUT `/api/courses/:id/materials/:materialId`
+
+Изменяет данные материала. Новая общая дата применяется только к выпускам без
+индивидуального переопределения и не переносит уже опубликованные материалы.
+
+### PUT `/api/courses/:id/materials/:materialId/groups/:courseGroupId/release`
+
+Управляет одной группой независимо от остальных:
+
+```json
+{ "action": "publish_now" }
+```
+
+или:
+
+```json
+{
+  "action": "schedule",
+  "scheduledAt": "2026-10-10T09:00:00.000Z"
+}
+```
+
+Действия: `inherit`, `schedule`, `publish_now`, `withhold`. `publish_now`
+немедленно создаёт уведомления студентам выбранной группы.
+
+Общие исходы курсов:
+
+| Статус | Когда                                                        |
+| -----: | ------------------------------------------------------------ |
+|  `400` | DTO некорректен, отсутствует дата или источник материала    |
+|  `401` | access token отсутствует или некорректен                     |
+|  `403` | роль или принадлежность курса не разрешает действие          |
+|  `404` | курс, группа, материал или блок не найдены                    |
+|  `409` | архив read-only либо teacher/group не соответствуют назначению |
+
+## Задания запуска курса
+
+Student читает только задания `published` и `closed` опубликованного курса своей
+группы. Teacher управляет только своими запусками, admin — своим tenant,
+superadmin — любым доступным запуском.
+
+### GET `/api/courses/:courseId/assignments`
+
+Тело отсутствует. Успех — `200 OK`, массив заданий. Teacher/admin получает также
+draft; student — только published/closed.
+
+### POST `/api/courses/:courseId/assignments`
+
+Создаёт `draft`; роли owner-teacher/admin/superadmin.
+
+```json
+{
+  "blockId": 15,
+  "title": "Лабораторная работа №1",
+  "description": "Приложите исходный код и отчёт",
+  "gradingType": "scored",
+  "maxScore": 100,
+  "deadline": "2026-10-10T20:59:59.000Z",
+  "allowedExtensions": ["pdf"],
+  "maxAttempts": 5,
+  "maxFiles": 1,
+  "maxFileSizeBytes": 5242880,
+  "maxTotalSizeBytes": 5242880,
+  "allowLateSubmissions": false
+}
+```
+
+`blockId`, `description`, `deadline`, `allowedExtensions` необязательны. Правила
+grading и расширений совпадают с шаблоном. Успех — `201 Created`:
+
+```json
+{
+  "id": 31,
+  "courseId": 12,
+  "blockId": 15,
+  "title": "Лабораторная работа №1",
+  "gradingType": "scored",
+  "maxScore": 100,
+  "deadline": "2026-10-10T20:59:59.000Z",
+  "status": "draft",
+  "allowedExtensions": ["zip", "pdf"],
+  "createdAt": "2026-08-10T10:00:00.000Z",
+  "updatedAt": "2026-08-10T10:00:00.000Z",
+  "block": { "id": 15, "title": "Практика", "orderIndex": 2 },
+  "course": { "id": 12, "title": "Основы алгоритмизации" },
+  "_count": { "submissions": 0 }
+}
+```
+
+### GET `/api/assignments/:id`
+
+Возвращает `200 OK` в том же формате. Недоступный курс и draft для студента
+маскируются как `404`.
+
+### PUT `/api/assignments/:id`
+
+Принимает непустое подмножество полей POST; `blockId`, `maxScore` и `deadline`
+могут быть `null`. После первой сдачи нельзя менять `gradingType` и `maxScore`.
+`maxAttempts` нельзя уменьшить ниже уже существующего номера попытки.
+Закрытое задание и архивный курс read-only. Успех — `200 OK`.
+
+### POST `/api/assignments/:id/publish`
+
+Тело отсутствует. Переводит `draft → published`, повторный вызов для published
+идемпотентен. Closed повторно открыть нельзя. Успех — `200 OK`.
+
+### POST `/api/assignments/:id/close`
+
+Тело отсутствует. Переводит `published → closed`; повтор для closed безопасен.
+Draft сначала нужно опубликовать. Успех — `200 OK`.
+
+### DELETE `/api/assignments/:id`
+
+Физически удаляет только draft без сдач и возвращает удалённую запись —
+`200 OK`. Published, closed или задание со сдачами возвращает `409`.
+
+Общие исходы заданий:
+
+| Статус | Когда |
+| -----: | --- |
+| `400` | DTO/ID, дата, расширения или grading-настройки некорректны |
+| `401` | access JWT отсутствует/некорректен или аккаунт неактивен |
+| `403` | роль или ownership не разрешает запись |
+| `404` | задание, блок, курс не найдены/не видны пользователю |
+| `409` | неверный переход статуса, есть сдачи или course archived |
+| `429` | превышен rate limit |
+
+Ограничения сдачи сохраняются вместе с заданием и копируются из шаблона в запуск:
+
+- `maxAttempts`: `1..20`, по умолчанию `3`;
+- `maxFiles`: `1..10`, по умолчанию `5`;
+- `maxFileSizeBytes`: `1024..104857600`, по умолчанию `26214400`;
+- `maxTotalSizeBytes`: не меньше лимита одного файла и не больше `262144000`;
+- `allowLateSubmissions`: по умолчанию `false`;
+- `allowedExtensions`: пустой массив разрешает все поддерживаемые безопасные
+  форматы; непустой массив дополнительно сужает список.
+
+Кроме лимита задания действует более строгий из server ceilings:
+`UPLOAD_HARD_MAX_FILES` (по умолчанию 5),
+`UPLOAD_HARD_MAX_FILE_SIZE_BYTES` (25 МБ) и
+`UPLOAD_HARD_MAX_TOTAL_SIZE_BYTES` (100 МБ). Задание с настройками выше server
+ceiling не создаётся. Это не позволяет преподавателю или подменённому запросу
+ослабить инфраструктурную защиту.
+
+Исполняемые и неподдерживаемые расширения нельзя сохранить в настройках.
+Backend проверяет расширение, заявленный MIME и сигнатуру/содержимое файла.
+
+## Сдачи и приватные файлы MinIO
+
+### POST `/api/assignments/:assignmentId/submissions`
+
+Только `student`. Запрос `multipart/form-data`; `studentId` не принимается и
+всегда берётся из JWT.
+
+| Поле | Обязательно | Описание |
+| --- | --- | --- |
+| `files` | да | один или несколько бинарных файлов под одинаковым именем поля |
+| `studentComment` | нет | строка до 2000 символов |
+
+Пример с настройками `5 попыток / 1 PDF / 5 МБ`: backend разрешит студенту
+создать попытки с номерами `1..5`; шестая получит `409`. Каждый запрос должен
+содержать ровно один файл из-за `maxFiles: 1`, а PDF проверяется не только по
+имени и MIME, но и по сигнатуре `%PDF-`.
+
+Успех — `201 Created`:
+
+```json
+{
+  "id": 41,
+  "assignmentId": 31,
+  "studentId": 12,
+  "attemptNumber": 1,
+  "studentComment": "Первая версия",
+  "submittedAt": "2026-10-01T12:00:00.000Z",
+  "student": {
+    "id": 12,
+    "fullName": "Иванов Иван Иванович",
+    "email": "student@demo.local"
+  },
+  "files": [
+    {
+      "id": 55,
+      "originalName": "report.pdf",
+      "mimeType": "application/pdf",
+      "sizeBytes": 245760
+    }
+  ],
+  "grade": null
+}
+```
+
+Перед загрузкой проверяются: опубликованные assignment/course, членство студента
+в группе курса, дедлайн, лимит попыток, число файлов, размер файла и всей
+попытки, разрешённое расширение, MIME и magic bytes. Объект получает случайный
+внутренний key; исходное имя не используется как путь. После успешной транзакции
+преподаватель получает `submission_received` notification.
+
+| Статус | Когда |
+| ---: | --- |
+| `400` | нет файлов, превышен файловый лимит, формат/MIME/содержимое не совпадают |
+| `401` | JWT отсутствует или недействителен |
+| `403` | роль не student |
+| `404` | задание не опубликовано или студент не состоит в группе курса |
+| `409` | истёк дедлайн без late-разрешения либо исчерпаны попытки |
+| `413` | multipart отклонён абсолютным лимитом Nest/Multer |
+| `503` | MinIO недоступен |
+
+### GET `/api/assignments/:assignmentId/submissions`
+
+Teacher-владелец курса, admin своего tenant и superadmin получают `200 OK` с
+массивом попыток, студентами, метаданными файлов и оценками. Чужой курс даёт
+`403`, отсутствующее задание — `404`.
+
+### GET `/api/files/:id/download`
+
+`id` — идентификатор `SubmissionFile`, а не путь MinIO. Получить ссылку может
+сам студент-владелец, преподаватель курса, admin tenant или superadmin. Ответ:
+
+```json
+{
+  "id": 55,
+  "originalName": "report.pdf",
+  "mimeType": "application/pdf",
+  "sizeBytes": 245760,
+  "url": "http://localhost:9000/uploads/...signature...",
+  "expiresInSeconds": 300
+}
+```
+
+Bucket не публикуется. URL подписан MinIO и по умолчанию живёт 5 минут.
+В Docker `MINIO_ENDPOINT=minio` используется только backend-клиентом, а URL для
+браузера подписывается через `MINIO_PUBLIC_ENDPOINT`. Локально это `localhost`;
+в production должен быть HTTPS-host файлового хранилища/reverse proxy.
+
+## Уведомления
+
+### GET `/api/notifications`
+
+Возвращает до 100 последних уведомлений текущего пользователя и `unreadCount`.
+
+### PATCH `/api/notifications/:id/read`
+
+Помечает собственное уведомление прочитанным. Чужой или отсутствующий ID даёт
+`404`.
+
+Ручной выпуск материала уже создаёт уведомление вида:
+
+```json
+{
+  "type": "material_published",
+  "title": "Новый материал: Лекция 1",
+  "body": "Иванов Иван Иванович · Математика · ИП1-1-22",
+  "data": {
+    "materialId": 15,
+    "courseId": 4,
+    "disciplineId": 1,
+    "teacherId": 2,
+    "groupId": 12
+  }
+}
+```
+
+Автоматическая отправка при наступлении запланированного времени потребует
+фонового worker; структура `MaterialRelease.notifiedAt` уже предотвращает
+повторную доставку.
+
 ## Новости пользователя
 
 Все маршруты требуют access token. Пользователь видит только опубликованные
@@ -820,6 +1377,14 @@ Hello World!
 
 ## Пока не реализовано
 
-Контроллеры courses, assignments, submissions, grades, chat, notifications,
-files и materials пока возвращают `TODO`-ответы. Импорт пользователей
-`POST /api/admin/users/import` также ещё не реализован.
+Следующие routes существуют как технические заглушки и пока возвращают
+`{"message":"TODO: ..."}`. Frontend не должен считать ответ `2xx` признаком
+готовой функции:
+
+- `POST /api/admin/users/import`;
+- `POST /api/submissions/:id/grade`;
+- `GET/POST /api/assignments/:assignmentId/chat`;
+- `GET/POST /api/materials`.
+
+Курсы, шаблоны, блоки, задания, уведомления и course-scoped материалы уже имеют
+рабочие контракты. Отдельные `/api/materials` остаются legacy-заглушками.

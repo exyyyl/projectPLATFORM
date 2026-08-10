@@ -70,7 +70,7 @@ export class AdminUsersController {
   @ApiBadRequestResponse({ description: 'Invalid request body' })
   @ApiConflictResponse({ description: 'Email already exists in the tenant' })
   create(@CurrentUser() user: JwtPayload, @Body() dto: CreateAdminUserDto) {
-    return this.usersService.createForAdmin(user.tenantId, dto);
+    return this.usersService.createForAdmin(user.tenantId, user.role, dto);
   }
 
   @Post('import')
@@ -102,7 +102,13 @@ export class AdminUsersController {
     @Param('id', ParseIntPipe) id: number,
     @Body() dto: UpdateAdminUserDto,
   ) {
-    return this.usersService.updateForAdmin(id, user.tenantId, user.id, dto);
+    return this.usersService.updateForAdmin(
+      id,
+      user.tenantId,
+      user.id,
+      user.role,
+      dto,
+    );
   }
 
   @Delete(':id')
@@ -119,6 +125,11 @@ export class AdminUsersController {
     @CurrentUser() user: JwtPayload,
     @Param('id', ParseIntPipe) id: number,
   ) {
-    return this.usersService.deactivateForAdmin(id, user.tenantId, user.id);
+    return this.usersService.deactivateForAdmin(
+      id,
+      user.tenantId,
+      user.id,
+      user.role,
+    );
   }
 }

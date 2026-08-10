@@ -1,10 +1,13 @@
 import { PrismaPg } from '@prisma/adapter-pg';
 import {
+  CourseStatus,
   GradeResult,
+  MaterialReleaseStatus,
   NewsStatus,
   Prisma,
   PrismaClient,
   type User,
+  UserRole,
 } from '@prisma/client';
 import * as bcrypt from 'bcrypt';
 import { Pool } from 'pg';
@@ -45,6 +48,7 @@ async function clearSeedTenantData(
   await tx.notification.deleteMany({ where: tenantUsers });
   await tx.auditLog.deleteMany({ where: tenantUsers });
   await tx.news.deleteMany({ where: { tenantId } });
+  await tx.courseTemplate.deleteMany({ where: { tenantId } });
 
   // Cascades remove courses, blocks, materials, assignments, submissions,
   // files, grades, chats, hidden courses and discipline junction tables.
@@ -105,6 +109,13 @@ async function seedDatabase(prisma: PrismaClient): Promise<void> {
       });
 
       await clearSeedTenantData(tx, tenant.id);
+      await tx.user.deleteMany({
+        where: {
+          tenantId: tenant.id,
+          email: 'superadmin@platform.local',
+          role: UserRole.superadmin,
+        },
+      });
       const users = await upsertUsers(tx, tenant.id, passwordHash);
 
       await tx.refreshToken.create({
@@ -232,27 +243,106 @@ async function seedDatabase(prisma: PrismaClient): Promise<void> {
         ],
       });
 
+      const [algorithmsTemplate, databasesTemplate, webDevelopmentTemplate] =
+        await Promise.all([
+          tx.courseTemplate.create({
+            data: {
+              tenantId: tenant.id,
+              disciplineId: algorithms.id,
+              ownerId: users.teacher.id,
+              title: algorithms.name,
+              description: algorithms.description ?? '',
+            },
+          }),
+          tx.courseTemplate.create({
+            data: {
+              tenantId: tenant.id,
+              disciplineId: databases.id,
+              ownerId: users.secondTeacher.id,
+              title: databases.name,
+              description: databases.description ?? '',
+            },
+          }),
+          tx.courseTemplate.create({
+            data: {
+              tenantId: tenant.id,
+              disciplineId: webDevelopment.id,
+              ownerId: users.teacher.id,
+              title: webDevelopment.name,
+              description: webDevelopment.description ?? '',
+            },
+          }),
+        ]);
+
       const [algorithmsCourse, databasesCourse, webDevelopmentCourse] =
         await Promise.all([
           tx.course.create({
             data: {
+              templateId: algorithmsTemplate.id,
+              templateVersion: algorithmsTemplate.version,
               disciplineId: algorithms.id,
               teacherId: users.teacher.id,
+              title: algorithms.name,
+              description: algorithms.description ?? '',
+              status: CourseStatus.published,
+              academicYear: '2026/2027',
+              semester: 1,
+              startsAt: daysFromNow(-30),
+              endsAt: daysFromNow(120),
             },
           }),
           tx.course.create({
             data: {
+              templateId: databasesTemplate.id,
+              templateVersion: databasesTemplate.version,
               disciplineId: databases.id,
               teacherId: users.secondTeacher.id,
+              title: databases.name,
+              description: databases.description ?? '',
+              status: CourseStatus.published,
+              academicYear: '2026/2027',
+              semester: 1,
+              startsAt: daysFromNow(-30),
+              endsAt: daysFromNow(120),
             },
           }),
           tx.course.create({
             data: {
+              templateId: webDevelopmentTemplate.id,
+              templateVersion: webDevelopmentTemplate.version,
               disciplineId: webDevelopment.id,
               teacherId: users.teacher.id,
+              title: webDevelopment.name,
+              description: webDevelopment.description ?? '',
+              status: CourseStatus.published,
+              academicYear: '2026/2027',
+              semester: 1,
+              startsAt: daysFromNow(-30),
+              endsAt: daysFromNow(120),
             },
           }),
         ]);
+
+      const teachingAssignments = await tx.teachingAssignment.findMany({
+        where: {
+          disciplineId: {
+            in: [algorithms.id, databases.id, webDevelopment.id],
+          },
+        },
+      });
+      const courseGroups = await Promise.all(
+        teachingAssignments.map((assignment) => {
+          const courseId =
+            assignment.disciplineId === algorithms.id
+              ? algorithmsCourse.id
+              : assignment.disciplineId === databases.id
+                ? databasesCourse.id
+                : webDevelopmentCourse.id;
+          return tx.courseGroup.create({
+            data: { courseId, teachingAssignmentId: assignment.id },
+          });
+        }),
+      );
 
       const [
         algorithmsTheoryBlock,
@@ -293,6 +383,45 @@ async function seedDatabase(prisma: PrismaClient): Promise<void> {
         }),
       ]);
 
+      const [
+        algorithmsTemplateTheoryBlock,
+        algorithmsTemplatePracticeBlock,
+        ,
+        databasesTemplatePracticeBlock,
+        webTemplateTheoryBlock,
+      ] = await Promise.all([
+        tx.courseTemplateBlock.create({
+          data: {
+            templateId: algorithmsTemplate.id,
+            ...seedBlocks.algorithmsTheory,
+          },
+        }),
+        tx.courseTemplateBlock.create({
+          data: {
+            templateId: algorithmsTemplate.id,
+            ...seedBlocks.algorithmsPractice,
+          },
+        }),
+        tx.courseTemplateBlock.create({
+          data: {
+            templateId: databasesTemplate.id,
+            ...seedBlocks.databasesTheory,
+          },
+        }),
+        tx.courseTemplateBlock.create({
+          data: {
+            templateId: databasesTemplate.id,
+            ...seedBlocks.databasesPractice,
+          },
+        }),
+        tx.courseTemplateBlock.create({
+          data: {
+            templateId: webDevelopmentTemplate.id,
+            ...seedBlocks.webTheory,
+          },
+        }),
+      ]);
+
       await tx.material.createMany({
         data: [
           {
@@ -322,10 +451,35 @@ async function seedDatabase(prisma: PrismaClient): Promise<void> {
         ],
       });
 
+      const seededMaterials = await tx.material.findMany({
+        where: {
+          courseId: {
+            in: [
+              algorithmsCourse.id,
+              databasesCourse.id,
+              webDevelopmentCourse.id,
+            ],
+          },
+        },
+      });
+      await tx.materialRelease.createMany({
+        data: seededMaterials.flatMap((material) =>
+          courseGroups
+            .filter((courseGroup) => courseGroup.courseId === material.courseId)
+            .map((courseGroup) => ({
+              materialId: material.id,
+              courseGroupId: courseGroup.id,
+              status: MaterialReleaseStatus.published,
+              publishedAt: daysFromNow(-5),
+            })),
+        ),
+      });
+
       const [algorithmsHomework, databaseLab] = await Promise.all([
         tx.assignment.create({
           data: {
             courseId: algorithmsCourse.id,
+            blockId: algorithmsPracticeBlock.id,
             createdBy: users.teacher.id,
             deadline: daysFromNow(-7),
             ...seedCatalog.assignments.algorithmsHomework,
@@ -337,6 +491,7 @@ async function seedDatabase(prisma: PrismaClient): Promise<void> {
         tx.assignment.create({
           data: {
             courseId: databasesCourse.id,
+            blockId: databasesPracticeBlock.id,
             createdBy: users.secondTeacher.id,
             deadline: daysFromNow(7),
             ...seedCatalog.assignments.databaseLab,
@@ -348,6 +503,7 @@ async function seedDatabase(prisma: PrismaClient): Promise<void> {
         tx.assignment.create({
           data: {
             courseId: webDevelopmentCourse.id,
+            blockId: webTheoryBlock.id,
             createdBy: users.teacher.id,
             deadline: null,
             ...seedCatalog.assignments.webProject,
@@ -357,6 +513,43 @@ async function seedDatabase(prisma: PrismaClient): Promise<void> {
           },
         }),
       ]);
+
+      await tx.courseTemplateAssignment.createMany({
+        data: [
+          {
+            templateId: algorithmsTemplate.id,
+            blockId: algorithmsTemplatePracticeBlock.id,
+            createdBy: users.teacher.id,
+            deadlineOffsetDays: 21,
+            ...seedCatalog.assignments.algorithmsHomework,
+            allowedExtensions: [
+              ...seedCatalog.assignments.algorithmsHomework.allowedExtensions,
+            ],
+          },
+          {
+            templateId: databasesTemplate.id,
+            blockId: databasesTemplatePracticeBlock.id,
+            createdBy: users.secondTeacher.id,
+            deadlineOffsetDays: 30,
+            ...seedCatalog.assignments.databaseLab,
+            allowedExtensions: [
+              ...seedCatalog.assignments.databaseLab.allowedExtensions,
+            ],
+          },
+          {
+            templateId: webDevelopmentTemplate.id,
+            blockId: webTemplateTheoryBlock.id,
+            createdBy: users.teacher.id,
+            deadlineOffsetDays: 45,
+            ...seedCatalog.assignments.webProject,
+            allowedExtensions: [
+              ...seedCatalog.assignments.webProject.allowedExtensions,
+            ],
+          },
+        ].map(({ status: _status, ...assignment }) => assignment),
+      });
+
+      void algorithmsTemplateTheoryBlock;
 
       const [
         algorithmsSubmission,
@@ -608,9 +801,15 @@ async function getTableCounts(
     discipline_teachers: await prisma.disciplineTeacher.count(),
     discipline_groups: await prisma.disciplineGroup.count(),
     teaching_assignments: await prisma.teachingAssignment.count(),
+    course_templates: await prisma.courseTemplate.count(),
+    course_template_blocks: await prisma.courseTemplateBlock.count(),
+    course_template_assignments:
+      await prisma.courseTemplateAssignment.count(),
     courses: await prisma.course.count(),
+    course_groups: await prisma.courseGroup.count(),
     course_blocks: await prisma.courseBlock.count(),
     materials: await prisma.material.count(),
+    material_releases: await prisma.materialRelease.count(),
     assignments: await prisma.assignment.count(),
     submissions: await prisma.submission.count(),
     submission_files: await prisma.submissionFile.count(),

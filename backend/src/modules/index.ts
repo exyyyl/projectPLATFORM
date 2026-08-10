@@ -1,7 +1,9 @@
 export { AdminModule } from './admin/admin.module';
+export { AcademicModule } from './academic/academic.module';
 export { AssignmentsModule } from './assignments/assignments.module';
 export { ChatModule } from './chat/chat.module';
 export { CoursesModule } from './courses/courses.module';
+export { CourseTemplatesModule } from './course-templates/course-templates.module';
 export { DisciplinesModule } from './disciplines/disciplines.module';
 export { FilesModule } from './files/files.module';
 export { GradesModule } from './grades/grades.module';

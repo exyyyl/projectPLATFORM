@@ -36,9 +36,9 @@ Auth уже реализован. Полное описание тела, отв
 
 ## Две зоны API
 
-| Зона          | Префикс URL             | Кто пользуется         | Примеры                                               |
-| ------------- | ----------------------- | ---------------------- | ----------------------------------------------------- |
-| **Платформа** | `/api/...` (без `admin`) | студент, преподаватель | `/courses`, `/assignments`, `/users/me`               |
+| Зона          | Префикс URL              | Кто пользуется         | Примеры                                                              |
+| ------------- | ------------------------ | ---------------------- | -------------------------------------------------------------------- |
+| **Платформа** | `/api/...` (без `admin`) | студент, преподаватель | `/courses`, `/assignments`, `/users/me`                              |
 | **Админка**   | `/api/admin/...`         | только admin           | `/admin/users`, `/admin/groups`, `/admin/disciplines`, `/admin/news` |
 
 На фронте:
@@ -50,21 +50,29 @@ Auth уже реализован. Полное описание тела, отв
 
 ## Реализованные запросы (сейчас)
 
-| Действие                    | Метод | URL                                        |
-| --------------------------- | ----- | ------------------------------------------ |
-| Health                      | GET   | http://localhost:3000/health               |
-| Вход                        | POST  | http://localhost:3000/api/auth/login        |
-| Вход администратора         | POST  | http://localhost:3000/api/auth/admin/login  |
-| Текущий профиль             | GET   | http://localhost:3000/api/users/me          |
-| Обновление профиля          | PUT   | http://localhost:3000/api/users/me          |
-| Пользователи tenant         | GET   | http://localhost:3000/api/admin/users       |
-| Группы tenant               | GET   | http://localhost:3000/api/admin/groups      |
-| Дисциплины и назначения     | GET   | http://localhost:3000/api/admin/disciplines |
-| Лента опубликованных новостей | GET | http://localhost:3000/api/news              |
-| Управление новостями        | GET   | http://localhost:3000/api/admin/news        |
+| Действие                      | Метод | URL                                         |
+| ----------------------------- | ----- | ------------------------------------------- |
+| Health                        | GET   | http://localhost:3000/health                |
+| Вход                          | POST  | http://localhost:3000/api/auth/login        |
+| Вход администратора           | POST  | http://localhost:3000/api/auth/admin/login  |
+| Текущий профиль               | GET   | http://localhost:3000/api/users/me          |
+| Обновление профиля            | PUT   | http://localhost:3000/api/users/me          |
+| Обзор по текущей роли         | GET   | http://localhost:3000/api/academic/overview |
+| Доступные курсы               | GET   | http://localhost:3000/api/courses           |
+| Шаблоны курсов                | GET   | http://localhost:3000/api/course-templates  |
+| Задания запуска               | GET   | http://localhost:3000/api/courses/1/assignments |
+| Пользователи tenant           | GET   | http://localhost:3000/api/admin/users       |
+| Группы tenant                 | GET   | http://localhost:3000/api/admin/groups      |
+| Дисциплины и назначения       | GET   | http://localhost:3000/api/admin/disciplines |
+| Лента опубликованных новостей | GET   | http://localhost:3000/api/news              |
+| Управление новостями          | GET   | http://localhost:3000/api/admin/news        |
+| Уведомления                   | GET   | http://localhost:3000/api/notifications     |
 
 Все маршруты, кроме явно помеченных `@Public()`, защищены глобальным
 `JwtAuthGuard`. Для `/api/admin/**` дополнительно требуется роль `admin`.
+Полный каталог routes и статусов готовности —
+[API_ROUTE_MATRIX.md](./API_ROUTE_MATRIX.md), подробные DTO, ответы и ошибки —
+[API_REFERENCE.md](./API_REFERENCE.md).
 
 ## Демо-данные
 
@@ -76,6 +84,9 @@ npx prisma db seed
 Создаёт tenant, связанные учебные данные и шесть demo-пользователей. Полный
 список email выводится командой seed; пароль всех demo-пользователей —
 `demo123`.
+
+Суперадминистратор намеренно не входит в demo-seed. Процедура безопасного
+создания описана в [SUPERADMIN.md](./SUPERADMIN.md).
 
 ## Через Nginx (Docker)
 

@@ -8,10 +8,12 @@ import { AppController } from './app.controller';
 import { AppService } from './app.service';
 import { HealthModule } from './health/health.module';
 import {
+  AcademicModule,
   AdminModule,
   AssignmentsModule,
   ChatModule,
   CoursesModule,
+  CourseTemplatesModule,
   FilesModule,
   GradesModule,
   MaterialsModule,
@@ -35,8 +37,10 @@ import { RolesGuard } from './common/guards/roles.guard';
     AuthModule,
     HealthModule,
     UsersModule,
+    AcademicModule,
     AdminModule,
     CoursesModule,
+    CourseTemplatesModule,
     AssignmentsModule,
     SubmissionsModule,
     GradesModule,

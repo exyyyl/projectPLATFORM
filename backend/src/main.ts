@@ -4,6 +4,7 @@ import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
 import cookieParser from 'cookie-parser';
 import helmet from 'helmet';
 import { AppModule } from './app.module';
+import { resolveCorsOrigins } from './common/config/cors.config';
 import { API_PREFIX } from './common/constants';
 
 async function bootstrap() {
@@ -29,7 +30,7 @@ async function bootstrap() {
   );
 
   app.enableCors({
-    origin: process.env.CORS_ORIGIN?.split(',') ?? true,
+    origin: resolveCorsOrigins(process.env),
     credentials: true,
   });
 

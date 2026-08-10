@@ -8,7 +8,7 @@
 ```
 Браузер → Nginx (/api/...) → NestJS (префикс api)
   → JwtAuthGuard (JWT access-token)
-  → RolesGuard (student | teacher | admin)
+  → RolesGuard (student | teacher | admin; superadmin bypass)
   → Controller
   → Service (бизнес-логика)
       → Prisma → PostgreSQL
@@ -42,21 +42,23 @@ backend/
 
 ## Модули и зоны ответственности
 
-| Модуль | Сервис | HTTP (префикс `v1`) | Ответственность |
+| Модуль | Сервис | HTTP (префикс `/api`) | Ответственность |
 |--------|--------|---------------------|-----------------|
 | **auth** | `AuthService` | `POST /auth/login`, `/auth/admin/login`, `/refresh`, `/logout` | Общая проверка email/пароля; admin-вход проверяет роль до выдачи токенов; JWT access + refresh в httpOnly cookie |
 | **users** | `UsersService` | `GET/PUT /users/me` | Профиль текущего пользователя, смена пароля |
 | **admin** | делегирует в Users/Groups/Disciplines/News | `GET/POST/PUT/DELETE /admin/users`, `/groups`, `/disciplines`, `/news` | CRUD пользователей, групп, дисциплин и новостей. Только `admin` |
 | **groups** | `GroupsService` | (через admin API) | Группы студентов, `user_groups` |
 | **disciplines** | `DisciplinesService` | (через admin API) | Справочник дисциплин, `discipline_teachers`, `discipline_groups`, конкретные тройки `teaching_assignments` |
-| **courses** | `CoursesService` | `GET /courses`, `GET/POST/PUT/DELETE /courses/:id/blocks` | Курс = дисциплина + преподаватель (+ группа). Блоки контента (JSON), скрытие курса (`hidden_courses`) |
-| **assignments** | `AssignmentsService` | `GET/POST/PUT/DELETE /assignments` | Задания: `grading_type`, дедлайн, статус draft/published/closed |
+| **academic** | `AcademicService` | `GET /academic/overview` | Разный overview для student, teacher, admin и superadmin |
+| **courses** | `CoursesService` | `GET/POST/PUT /courses`, группы, progress, материалы | Черновик курса, привязка через `teaching_assignments`, независимые выпуски материалов по группам |
+| **course-templates** | `CourseTemplatesService` | `/course-templates/**` | Переиспользуемые шаблоны, блоки/задания и создание снимка запуска на учебный год |
+| **assignments** | `AssignmentsService` | `/courses/:id/assignments`, `/assignments/:id/**` | CRUD заданий и переходы draft/published/closed |
 | **submissions** | `SubmissionsService` | `POST /assignments/:id/submissions`, `GET .../submissions` | Сдача работ (multipart), попытки, `student_comment`, файлы → MinIO |
 | **grades** | `GradesService` | `POST /submissions/:id/grade` | Оценка: зачёт/незачёт или баллы, комментарий, уведомление студенту |
 | **chat** | `ChatService` | `GET/POST /assignments/:id/chat` | Чат по заданию (только создание сообщений) |
-| **notifications** | `NotificationsService` | `GET/PATCH /notifications` | In-app уведомления, отметка прочитанными |
-| **files** | `FilesService` | `GET /files/:token` | MIME + magic bytes, загрузка в MinIO, presigned URL (TTL ~5 мин), без web-root |
-| **materials** | `MaterialsService` | `GET/POST /materials` | Учебные материалы (файл или ссылка), связь с курсом/блоком |
+| **notifications** | `NotificationsService` | `GET /notifications`, `PATCH /notifications/:id/read` | In-app уведомления, отметка прочитанными, событие ручного выпуска материала |
+| **files** | `FilesService` | `GET /files/:id/download` | Приватный MinIO, MIME/magic bytes, RBAC/ownership и presigned URL |
+| **materials** | `MaterialsService` | `GET/POST /materials` (TODO) | Legacy-заглушка; рабочие metadata routes находятся внутри `/courses/:id/materials` |
 | **news** | `NewsService` | `GET /news`, admin CRUD и publish/unpublish | Markdown-новости, черновики, публикация, фильтрация по tenant и роли |
 | **health** | — | `GET /health` | Проверка живости API |
 
@@ -68,7 +70,7 @@ backend/
 | `RolesGuard` | RBAC по декоратору `@Roles()` |
 | `@Public()` | Маршруты без авторизации (login, refresh, files token) |
 | `@CurrentUser()` | Доступ к payload JWT в контроллере |
-| `ValidationPipe` | Глобальная валидация DTO (class-validator — следующий шаг) |
+| `ValidationPipe` | Глобальная class-validator DTO-валидация с запретом лишних полей |
 
 ## Модель данных (кратко)
 
@@ -80,7 +82,9 @@ tenants → users
             └─ [teacher] → discipline_teachers → disciplines
                                               → discipline_groups → groups
                                               → teaching_assignments ← teacher + group
-                                              → courses
+                                              → course_templates
+                                                    → template_blocks, template_assignments
+                                                    → courses (запуски по годам)
                                                     → course_blocks, materials
                                                     → assignments
                                                           → submissions → submission_files, grades
@@ -94,12 +98,12 @@ audit_logs (сквозной аудит)
 **Важно (из ТЗ):** `disciplines` — справочник предмета;
 `teaching_assignments` фиксирует административную тройку
 «дисциплина + преподаватель + группа» только после создания обеих парных связей
-с дисциплиной. Текущая модель `courses` пока хранит
-дисциплину и преподавателя; привязка курса к тройному назначению будет выполнена
-в вертикальном срезе учебной структуры. Материалы и задания всегда находятся на
-уровне **course**, а не discipline.
+с дисциплиной. `CourseTemplate` хранит ежегодно переиспользуемую основу, а
+`Course` — независимый запуск-снимок с группами, блоками и заданиями. Материалы
+пока находятся на уровне запуска; шаблонные материалы добавляются вместе с
+MinIO.
 
-Планируемый role-scoped read API строится на `teaching_assignments`:
+Role-scoped read API строится на `teaching_assignments`:
 
 - студент → его `user_groups` → назначения групп → дисциплины и преподаватели;
 - преподаватель → назначения по `teacher_id` → дисциплины и группы;

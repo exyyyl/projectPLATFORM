@@ -15,6 +15,7 @@ enum UserRole {
   student
   teacher
   admin
+  superadmin
 }
 
 enum GradingType {
@@ -38,12 +39,26 @@ enum MaterialType {
   link
 }
 
+enum CourseStatus {
+  draft
+  published
+  archived
+}
+
+enum MaterialReleaseStatus {
+  draft
+  scheduled
+  published
+  withheld
+}
+
 enum NotificationType {
   submission_received
   grade_posted
   chat_message
   news_published
   assignment_published
+  material_published
 }
 
 enum NewsTargetRole {
@@ -51,6 +66,7 @@ enum NewsTargetRole {
   student
   teacher
   admin
+  superadmin
 }
 
 enum NewsStatus {
@@ -68,10 +84,11 @@ model Tenant {
   createdAt DateTime @default(now()) @map("created_at")
   updatedAt DateTime @updatedAt @map("updated_at")
 
-  users       User[]
-  groups      Group[]
-  disciplines Discipline[]
-  news        News[]
+  users           User[]
+  groups          Group[]
+  disciplines     Discipline[]
+  courseTemplates CourseTemplate[]
+  news            News[]
 
   @@map("tenants")
 }
@@ -87,20 +104,22 @@ model User {
   createdAt    DateTime @default(now()) @map("created_at")
   updatedAt    DateTime @updatedAt @map("updated_at")
 
-  tenant              Tenant               @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  userGroups          UserGroup[]
-  disciplineTeachers  DisciplineTeacher[]
-  teachingAssignments TeachingAssignment[]
-  taughtCourses       Course[]             @relation("CourseTeacher")
-  submissions         Submission[]
-  gradedSubmissions   Grade[]              @relation("GradeGrader")
-  chatMessages        ChatMessage[]
-  notifications       Notification[]
-  uploadedMaterials   Material[]           @relation("MaterialUploader")
-  createdNews         News[]               @relation("NewsAuthor")
-  hiddenCourses       HiddenCourse[]
-  auditLogs           AuditLog[]
-  refreshTokens       RefreshToken[]
+  tenant                     Tenant                     @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  userGroups                 UserGroup[]
+  disciplineTeachers         DisciplineTeacher[]
+  teachingAssignments        TeachingAssignment[]
+  taughtCourses              Course[]                   @relation("CourseTeacher")
+  ownedCourseTemplates       CourseTemplate[]           @relation("CourseTemplateOwner")
+  createdTemplateAssignments CourseTemplateAssignment[] @relation("TemplateAssignmentCreator")
+  submissions                Submission[]
+  gradedSubmissions          Grade[]                    @relation("GradeGrader")
+  chatMessages               ChatMessage[]
+  notifications              Notification[]
+  uploadedMaterials          Material[]                 @relation("MaterialUploader")
+  createdNews                News[]                     @relation("NewsAuthor")
+  hiddenCourses              HiddenCourse[]
+  auditLogs                  AuditLog[]
+  refreshTokens              RefreshToken[]
 
   @@unique([tenantId, email])
   @@map("users")
@@ -158,6 +177,7 @@ model Discipline {
   disciplineTeachers  DisciplineTeacher[]
   disciplineGroups    DisciplineGroup[]
   teachingAssignments TeachingAssignment[]
+  courseTemplates     CourseTemplate[]
   courses             Course[]
 
   @@unique([tenantId, name])
@@ -193,9 +213,10 @@ model TeachingAssignment {
   groupId      Int      @map("group_id")
   createdAt    DateTime @default(now()) @map("created_at")
 
-  discipline Discipline @relation(fields: [disciplineId], references: [id], onDelete: Cascade)
-  teacher    User       @relation(fields: [teacherId], references: [id], onDelete: Cascade)
-  group      Group      @relation(fields: [groupId], references: [id], onDelete: Cascade)
+  discipline   Discipline    @relation(fields: [disciplineId], references: [id], onDelete: Cascade)
+  teacher      User          @relation(fields: [teacherId], references: [id], onDelete: Cascade)
+  group        Group         @relation(fields: [groupId], references: [id], onDelete: Cascade)
+  courseGroups CourseGroup[]
 
   @@unique([disciplineId, teacherId, groupId])
   @@index([teacherId])
@@ -205,19 +226,114 @@ model TeachingAssignment {
 
 // --- Учебный контент ---
 
+model CourseTemplate {
+  id           Int      @id @default(autoincrement())
+  tenantId     Int      @map("tenant_id")
+  disciplineId Int      @map("discipline_id")
+  ownerId      Int      @map("owner_id")
+  title        String
+  description  String   @default("")
+  version      Int      @default(1)
+  isActive     Boolean  @default(true) @map("is_active")
+  createdAt    DateTime @default(now()) @map("created_at")
+  updatedAt    DateTime @updatedAt @map("updated_at")
+
+  tenant      Tenant                     @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  discipline  Discipline                 @relation(fields: [disciplineId], references: [id], onDelete: Restrict)
+  owner       User                       @relation("CourseTemplateOwner", fields: [ownerId], references: [id], onDelete: Restrict)
+  blocks      CourseTemplateBlock[]
+  assignments CourseTemplateAssignment[]
+  runs        Course[]
+
+  @@index([tenantId, isActive])
+  @@index([disciplineId, ownerId])
+  @@map("course_templates")
+}
+
+model CourseTemplateBlock {
+  id         Int    @id @default(autoincrement())
+  templateId Int    @map("template_id")
+  title      String
+  orderIndex Int    @map("order_index")
+  content    Json   @default("{}")
+
+  template    CourseTemplate             @relation(fields: [templateId], references: [id], onDelete: Cascade)
+  assignments CourseTemplateAssignment[]
+
+  @@index([templateId, orderIndex])
+  @@map("course_template_blocks")
+}
+
+model CourseTemplateAssignment {
+  id                   Int         @id @default(autoincrement())
+  templateId           Int         @map("template_id")
+  blockId              Int?        @map("block_id")
+  title                String
+  description          String      @default("")
+  gradingType          GradingType @map("grading_type")
+  maxScore             Int?        @map("max_score")
+  deadlineOffsetDays   Int?        @map("deadline_offset_days")
+  allowedExtensions    String[]    @default([]) @map("allowed_extensions")
+  maxAttempts          Int         @default(3) @map("max_attempts")
+  maxFiles             Int         @default(5) @map("max_files")
+  maxFileSizeBytes     Int         @default(26214400) @map("max_file_size_bytes")
+  maxTotalSizeBytes    Int         @default(52428800) @map("max_total_size_bytes")
+  allowLateSubmissions Boolean     @default(false) @map("allow_late_submissions")
+  createdBy            Int         @map("created_by")
+  createdAt            DateTime    @default(now()) @map("created_at")
+  updatedAt            DateTime    @updatedAt @map("updated_at")
+
+  template CourseTemplate       @relation(fields: [templateId], references: [id], onDelete: Cascade)
+  block    CourseTemplateBlock? @relation(fields: [blockId], references: [id], onDelete: SetNull)
+  creator  User                 @relation("TemplateAssignmentCreator", fields: [createdBy], references: [id], onDelete: Restrict)
+
+  @@index([templateId, blockId])
+  @@map("course_template_assignments")
+}
+
 model Course {
-  id           Int @id @default(autoincrement())
-  disciplineId Int @map("discipline_id")
-  teacherId    Int @map("teacher_id")
+  id              Int          @id @default(autoincrement())
+  templateId      Int?         @map("template_id")
+  disciplineId    Int          @map("discipline_id")
+  teacherId       Int          @map("teacher_id")
+  title           String
+  description     String       @default("")
+  status          CourseStatus @default(draft)
+  academicYear    String?      @map("academic_year")
+  semester        Int?
+  startsAt        DateTime?    @map("starts_at")
+  endsAt          DateTime?    @map("ends_at")
+  archivedAt      DateTime?    @map("archived_at")
+  templateVersion Int?         @map("template_version")
+  createdAt       DateTime     @default(now()) @map("created_at")
+  updatedAt       DateTime     @updatedAt @map("updated_at")
 
-  discipline  Discipline     @relation(fields: [disciplineId], references: [id], onDelete: Cascade)
-  teacher     User           @relation("CourseTeacher", fields: [teacherId], references: [id], onDelete: Restrict)
-  blocks      CourseBlock[]
-  materials   Material[]
-  assignments Assignment[]
-  hiddenBy    HiddenCourse[]
+  template     CourseTemplate? @relation(fields: [templateId], references: [id], onDelete: SetNull)
+  discipline   Discipline      @relation(fields: [disciplineId], references: [id], onDelete: Cascade)
+  teacher      User            @relation("CourseTeacher", fields: [teacherId], references: [id], onDelete: Restrict)
+  courseGroups CourseGroup[]
+  blocks       CourseBlock[]
+  materials    Material[]
+  assignments  Assignment[]
+  hiddenBy     HiddenCourse[]
 
+  @@index([templateId, academicYear, semester])
   @@map("courses")
+}
+
+model CourseGroup {
+  id                   Int      @id @default(autoincrement())
+  courseId             Int      @map("course_id")
+  teachingAssignmentId Int      @map("teaching_assignment_id")
+  createdAt            DateTime @default(now()) @map("created_at")
+
+  course             Course             @relation(fields: [courseId], references: [id], onDelete: Cascade)
+  teachingAssignment TeachingAssignment @relation(fields: [teachingAssignmentId], references: [id], onDelete: Cascade)
+  materialReleases   MaterialRelease[]
+
+  @@unique([courseId, teachingAssignmentId])
+  @@index([teachingAssignmentId])
+  @@map("course_groups")
 }
 
 model CourseBlock {
@@ -227,45 +343,76 @@ model CourseBlock {
   orderIndex Int    @map("order_index")
   content    Json   @default("{}")
 
-  course    Course     @relation(fields: [courseId], references: [id], onDelete: Cascade)
-  materials Material[]
+  course      Course       @relation(fields: [courseId], references: [id], onDelete: Cascade)
+  materials   Material[]
+  assignments Assignment[]
 
   @@map("course_blocks")
 }
 
 model Material {
-  id         Int          @id @default(autoincrement())
-  courseId   Int          @map("course_id")
-  blockId    Int?         @map("block_id")
-  title      String
-  type       MaterialType
-  url        String?
-  filePath   String?      @map("file_path")
-  uploadedBy Int          @map("uploaded_by")
-  createdAt  DateTime     @default(now()) @map("created_at")
+  id                 Int          @id @default(autoincrement())
+  courseId           Int          @map("course_id")
+  blockId            Int?         @map("block_id")
+  title              String
+  type               MaterialType
+  url                String?
+  filePath           String?      @map("file_path")
+  uploadedBy         Int          @map("uploaded_by")
+  defaultAvailableAt DateTime?    @map("default_available_at")
+  createdAt          DateTime     @default(now()) @map("created_at")
+  updatedAt          DateTime     @updatedAt @map("updated_at")
 
-  course   Course       @relation(fields: [courseId], references: [id], onDelete: Cascade)
-  block    CourseBlock? @relation(fields: [blockId], references: [id], onDelete: SetNull)
-  uploader User         @relation("MaterialUploader", fields: [uploadedBy], references: [id], onDelete: Restrict)
+  course   Course            @relation(fields: [courseId], references: [id], onDelete: Cascade)
+  block    CourseBlock?      @relation(fields: [blockId], references: [id], onDelete: SetNull)
+  uploader User              @relation("MaterialUploader", fields: [uploadedBy], references: [id], onDelete: Restrict)
+  releases MaterialRelease[]
 
   @@map("materials")
 }
 
+model MaterialRelease {
+  id            Int                   @id @default(autoincrement())
+  materialId    Int                   @map("material_id")
+  courseGroupId Int                   @map("course_group_id")
+  status        MaterialReleaseStatus @default(draft)
+  scheduledAt   DateTime?             @map("scheduled_at")
+  publishedAt   DateTime?             @map("published_at")
+  notifiedAt    DateTime?             @map("notified_at")
+  isOverridden  Boolean               @default(false) @map("is_overridden")
+  createdAt     DateTime              @default(now()) @map("created_at")
+  updatedAt     DateTime              @updatedAt @map("updated_at")
+
+  material    Material    @relation(fields: [materialId], references: [id], onDelete: Cascade)
+  courseGroup CourseGroup @relation(fields: [courseGroupId], references: [id], onDelete: Cascade)
+
+  @@unique([materialId, courseGroupId])
+  @@index([courseGroupId, status, scheduledAt])
+  @@map("material_releases")
+}
+
 model Assignment {
-  id                Int              @id @default(autoincrement())
-  courseId          Int              @map("course_id")
-  title             String
-  description       String           @default("")
-  gradingType       GradingType      @map("grading_type")
-  maxScore          Int?             @map("max_score")
-  deadline          DateTime?
-  status            AssignmentStatus @default(draft)
-  allowedExtensions String[]         @default([]) @map("allowed_extensions")
-  createdBy         Int              @map("created_by")
-  createdAt         DateTime         @default(now()) @map("created_at")
-  updatedAt         DateTime         @updatedAt @map("updated_at")
+  id                   Int              @id @default(autoincrement())
+  courseId             Int              @map("course_id")
+  blockId              Int?             @map("block_id")
+  title                String
+  description          String           @default("")
+  gradingType          GradingType      @map("grading_type")
+  maxScore             Int?             @map("max_score")
+  deadline             DateTime?
+  status               AssignmentStatus @default(draft)
+  allowedExtensions    String[]         @default([]) @map("allowed_extensions")
+  maxAttempts          Int              @default(3) @map("max_attempts")
+  maxFiles             Int              @default(5) @map("max_files")
+  maxFileSizeBytes     Int              @default(26214400) @map("max_file_size_bytes")
+  maxTotalSizeBytes    Int              @default(52428800) @map("max_total_size_bytes")
+  allowLateSubmissions Boolean          @default(false) @map("allow_late_submissions")
+  createdBy            Int              @map("created_by")
+  createdAt            DateTime         @default(now()) @map("created_at")
+  updatedAt            DateTime         @updatedAt @map("updated_at")
 
   course       Course        @relation(fields: [courseId], references: [id], onDelete: Cascade)
+  block        CourseBlock?  @relation(fields: [blockId], references: [id], onDelete: SetNull)
   submissions  Submission[]
   chatMessages ChatMessage[]
 
@@ -338,6 +485,9 @@ model Notification {
   type          NotificationType
   referenceId   Int?             @map("reference_id")
   referenceType String?          @map("reference_type")
+  title         String?
+  body          String?
+  data          Json             @default("{}")
   isRead        Boolean          @default(false) @map("is_read")
   createdAt     DateTime         @default(now()) @map("created_at")
 

@@ -1,6 +1,7 @@
 import {
   BadRequestException,
   ConflictException,
+  ForbiddenException,
   Injectable,
   NotFoundException,
   UnauthorizedException,
@@ -148,7 +149,14 @@ export class UsersService {
     return this.findTenantUser(userId, tenantId);
   }
 
-  async createForAdmin(tenantId: number, dto: CreateAdminUserDto) {
+  async createForAdmin(
+    tenantId: number,
+    actorRole: UserRole,
+    dto: CreateAdminUserDto,
+  ) {
+    if (dto.role === UserRole.superadmin && actorRole !== UserRole.superadmin) {
+      throw new ForbiddenException('Only a superadmin can create a superadmin');
+    }
     const passwordHash = await bcrypt.hash(dto.password, 12);
 
     try {
@@ -172,6 +180,7 @@ export class UsersService {
     userId: number,
     tenantId: number,
     actorUserId: number,
+    actorRole: UserRole,
     dto: UpdateAdminUserDto,
   ) {
     if (Object.values(dto).every((value) => value === undefined)) {
@@ -183,12 +192,22 @@ export class UsersService {
     if (
       userId === actorUserId &&
       dto.role !== undefined &&
-      dto.role !== UserRole.admin
+      dto.role !== actorRole
     ) {
       throw new BadRequestException('You cannot remove your own admin role');
     }
 
-    await this.findTenantUser(userId, tenantId);
+    if (dto.role === UserRole.superadmin && actorRole !== UserRole.superadmin) {
+      throw new ForbiddenException('Only a superadmin can grant this role');
+    }
+
+    const targetUser = await this.findTenantUser(userId, tenantId);
+    if (
+      targetUser.role === UserRole.superadmin &&
+      actorRole !== UserRole.superadmin
+    ) {
+      throw new ForbiddenException('Only a superadmin can edit a superadmin');
+    }
 
     const changes: {
       email?: string;
@@ -236,12 +255,21 @@ export class UsersService {
     userId: number,
     tenantId: number,
     actorUserId: number,
+    actorRole: UserRole,
   ) {
     if (userId === actorUserId) {
       throw new BadRequestException('You cannot deactivate your own account');
     }
 
-    await this.findTenantUser(userId, tenantId);
+    const targetUser = await this.findTenantUser(userId, tenantId);
+    if (
+      targetUser.role === UserRole.superadmin &&
+      actorRole !== UserRole.superadmin
+    ) {
+      throw new ForbiddenException(
+        'Only a superadmin can deactivate a superadmin',
+      );
+    }
     const [user] = await this.prisma.$transaction([
       this.prisma.user.update({
         where: { id: userId },
